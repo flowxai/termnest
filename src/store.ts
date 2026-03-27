@@ -67,6 +67,8 @@ interface AppStore {
   setActiveTab: (projectId: string, tabId: string) => void;
   updateTabLayout: (projectId: string, tabId: string, layout: SplitNode) => void;
 
+  reorderTabs: (projectId: string, fromTabId: string, toTabId: string) => void;
+
   // Pane 状态
   updatePaneStatusByPty: (ptyId: number, status: PaneStatus) => void;
 
@@ -84,6 +86,8 @@ export const useAppStore = create<AppStore>((set) => ({
     projects: [],
     defaultShell: '',
     availableShells: [],
+    uiFontSize: 13,
+    terminalFontSize: 14,
   },
   setConfig: (config) => set({ config }),
 
@@ -150,6 +154,21 @@ export const useAppStore = create<AppStore>((set) => ({
       const ps = newStates.get(projectId);
       if (!ps) return state;
       newStates.set(projectId, { ...ps, activeTabId: tabId });
+      return { projectStates: newStates };
+    }),
+
+  reorderTabs: (projectId, fromTabId, toTabId) =>
+    set((state) => {
+      const newStates = new Map(state.projectStates);
+      const ps = newStates.get(projectId);
+      if (!ps) return state;
+      const tabs = [...ps.tabs];
+      const fromIdx = tabs.findIndex((t) => t.id === fromTabId);
+      const toIdx = tabs.findIndex((t) => t.id === toTabId);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return state;
+      const [moved] = tabs.splice(fromIdx, 1);
+      tabs.splice(toIdx, 0, moved);
+      newStates.set(projectId, { ...ps, tabs });
       return { projectStates: newStates };
     }),
 

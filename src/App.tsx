@@ -6,7 +6,7 @@ import { TerminalArea } from './components/TerminalArea';
 import { ProjectList } from './components/ProjectList';
 import { FileTree } from './components/FileTree';
 import { AIHistoryPanel } from './components/AIHistoryPanel';
-import { TerminalConfigModal } from './components/TerminalConfigModal';
+import { SettingsModal } from './components/SettingsModal';
 import { useTauriEvent } from './hooks/useTauriEvent';
 import type { AppConfig, PtyStatusChangePayload, PtyExitPayload, PaneStatus } from './types';
 
@@ -22,6 +22,10 @@ export function App() {
   useEffect(() => {
     invoke<AppConfig>('load_config').then((cfg) => {
       setConfig(cfg);
+      // 应用 UI 字体大小
+      if (cfg.uiFontSize) {
+        document.documentElement.style.fontSize = `${cfg.uiFontSize}px`;
+      }
       const { projectStates } = useAppStore.getState();
       const newStates = new Map(projectStates);
       for (const p of cfg.projects) {
@@ -105,7 +109,7 @@ export function App() {
           </Allotment.Pane>
         </Allotment>
       </div>
-      <TerminalConfigModal open={configOpen} onClose={() => setConfigOpen(false)} />
+      <SettingsModal open={configOpen} onClose={() => setConfigOpen(false)} />
     </div>
   );
 }

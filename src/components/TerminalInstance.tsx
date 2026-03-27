@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { useAppStore } from '../store';
 import type { PtyOutputPayload } from '../types';
 import { showContextMenu } from '../utils/contextMenu';
 import '@xterm/xterm/css/xterm.css';
@@ -20,12 +21,13 @@ export function TerminalInstance({ ptyId, paneId, onSplit, onClose }: Props) {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const terminalFontSize = useAppStore((s) => s.config.terminalFontSize);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
     const term = new Terminal({
-      fontSize: 13,
+      fontSize: useAppStore.getState().config.terminalFontSize ?? 14,
       fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
       fontWeight: '400',
       fontWeightBold: '600',
@@ -115,6 +117,16 @@ export function TerminalInstance({ ptyId, paneId, onSplit, onClose }: Props) {
       term.dispose();
     };
   }, [ptyId]);
+
+  // 动态更新终端字体大小
+  useEffect(() => {
+    const term = termRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (term && terminalFontSize) {
+      term.options.fontSize = terminalFontSize;
+      fitAddon?.fit();
+    }
+  }, [terminalFontSize]);
 
   return (
     <div

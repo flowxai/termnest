@@ -9,6 +9,10 @@ pub struct AppConfig {
     pub projects: Vec<ProjectConfig>,
     pub default_shell: String,
     pub available_shells: Vec<ShellConfig>,
+    #[serde(default = "default_ui_font_size")]
+    pub ui_font_size: f64,
+    #[serde(default = "default_terminal_font_size")]
+    pub terminal_font_size: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,12 +31,17 @@ pub struct ShellConfig {
     pub args: Option<Vec<String>>,
 }
 
+fn default_ui_font_size() -> f64 { 13.0 }
+fn default_terminal_font_size() -> f64 { 14.0 }
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             projects: vec![],
             default_shell: default_shell_name(),
             available_shells: default_shells(),
+            ui_font_size: default_ui_font_size(),
+            terminal_font_size: default_terminal_font_size(),
         }
     }
 }

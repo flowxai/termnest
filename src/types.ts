@@ -4,6 +4,8 @@ export interface AppConfig {
   projects: ProjectConfig[];
   defaultShell: string;
   availableShells: ShellConfig[];
+  uiFontSize: number;
+  terminalFontSize: number;
 }
 
 export interface ProjectConfig {
