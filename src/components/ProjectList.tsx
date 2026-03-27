@@ -1,8 +1,10 @@
 import { useCallback } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useAppStore, genId } from '../store';
 import { StatusDot } from './StatusDot';
+import { showContextMenu } from '../utils/contextMenu';
 import type { PaneStatus } from '../types';
 
 export function ProjectList() {
@@ -68,6 +70,20 @@ export function ProjectList() {
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-subtle)]'
               }`}
               onClick={() => setActiveProject(project.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showContextMenu(e.clientX, e.clientY, [
+                  {
+                    label: '在文件夹中打开',
+                    onClick: () => revealItemInDir(project.path),
+                  },
+                  {
+                    label: '复制绝对路径',
+                    onClick: () => navigator.clipboard.writeText(project.path),
+                  },
+                ]);
+              }}
               title={project.path}
             >
               {isActive && (
