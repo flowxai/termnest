@@ -13,6 +13,10 @@ pub struct AppConfig {
     pub ui_font_size: f64,
     #[serde(default = "default_terminal_font_size")]
     pub terminal_font_size: f64,
+    #[serde(default)]
+    pub layout_sizes: Option<Vec<f64>>,
+    #[serde(default)]
+    pub ai_panel_size: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +46,8 @@ impl Default for AppConfig {
             available_shells: default_shells(),
             ui_font_size: default_ui_font_size(),
             terminal_font_size: default_terminal_font_size(),
+            layout_sizes: None,
+            ai_panel_size: None,
         }
     }
 }

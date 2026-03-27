@@ -9,18 +9,40 @@ import type { PtyOutputPayload } from '../types';
 import { showContextMenu } from '../utils/contextMenu';
 import '@xterm/xterm/css/xterm.css';
 
+type DropZone = 'top' | 'bottom' | 'left' | 'right';
+
+function getDropZone(rect: DOMRect, clientX: number, clientY: number): DropZone {
+  const x = (clientX - rect.left) / rect.width;
+  const y = (clientY - rect.top) / rect.height;
+  const aboveMain = y < x;
+  const aboveAnti = y < 1 - x;
+  if (aboveMain && aboveAnti) return 'top';
+  if (!aboveMain && !aboveAnti) return 'bottom';
+  if (!aboveMain && aboveAnti) return 'left';
+  return 'right';
+}
+
+const dropZoneOverlay: Record<DropZone, React.CSSProperties> = {
+  top: { top: 0, left: 0, right: 0, height: '50%' },
+  bottom: { bottom: 0, left: 0, right: 0, height: '50%' },
+  left: { top: 0, left: 0, bottom: 0, width: '50%' },
+  right: { top: 0, right: 0, bottom: 0, width: '50%' },
+};
+
 interface Props {
   ptyId: number;
   paneId?: string;
   onSplit?: (paneId: string, direction: 'horizontal' | 'vertical') => void;
   onClose?: (paneId: string) => void;
+  onTabDrop?: (sourceTabId: string, targetPaneId: string, direction: 'horizontal' | 'vertical', position: 'before' | 'after') => void;
 }
 
-export function TerminalInstance({ ptyId, paneId, onSplit, onClose }: Props) {
+export function TerminalInstance({ ptyId, paneId, onSplit, onClose, onTabDrop }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [tabDropZone, setTabDropZone] = useState<DropZone | null>(null);
   const terminalFontSize = useAppStore((s) => s.config.terminalFontSize);
 
   useEffect(() => {
@@ -128,25 +150,53 @@ export function TerminalInstance({ ptyId, paneId, onSplit, onClose }: Props) {
     }
   }, [terminalFontSize]);
 
+  const isTabDrag = (e: React.DragEvent) => e.dataTransfer.types.includes('application/tab-id');
+
   return (
     <div
       className="w-full h-full relative"
       onDragEnter={(e) => {
         e.preventDefault();
-        setDragOver(true);
+        if (isTabDrag(e)) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setTabDropZone(getDropZone(rect, e.clientX, e.clientY));
+        } else {
+          setDragOver(true);
+        }
       }}
       onDragOver={(e) => {
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'copy';
+        if (isTabDrag(e)) {
+          e.dataTransfer.dropEffect = 'move';
+          const rect = e.currentTarget.getBoundingClientRect();
+          setTabDropZone(getDropZone(rect, e.clientX, e.clientY));
+        } else {
+          e.dataTransfer.dropEffect = 'copy';
+        }
       }}
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
           setDragOver(false);
+          setTabDropZone(null);
         }
       }}
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
+        setTabDropZone(null);
+
+        const tabId = e.dataTransfer.getData('application/tab-id');
+        if (tabId && paneId && onTabDrop) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const zone = getDropZone(rect, e.clientX, e.clientY);
+          const direction: 'horizontal' | 'vertical' =
+            zone === 'left' || zone === 'right' ? 'horizontal' : 'vertical';
+          const position: 'before' | 'after' =
+            zone === 'left' || zone === 'top' ? 'before' : 'after';
+          onTabDrop(tabId, paneId, direction, position);
+          return;
+        }
+
         const filePath = e.dataTransfer.getData('text/plain');
         if (filePath) {
           invoke('write_pty', { ptyId, data: filePath });
@@ -167,7 +217,7 @@ export function TerminalInstance({ ptyId, paneId, onSplit, onClose }: Props) {
       {/* xterm.js 渲染容器 */}
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* 拖拽视觉提示（纯展示，不拦截事件） */}
+      {/* 文件拖拽视觉提示 */}
       {dragOver && (
         <div
           className="absolute inset-1 z-10 flex items-center justify-center pointer-events-none rounded-[var(--radius-md)]"
@@ -178,6 +228,18 @@ export function TerminalInstance({ ptyId, paneId, onSplit, onClose }: Props) {
             释放以插入路径
           </span>
         </div>
+      )}
+
+      {/* Tab 拖拽分屏方向指示 */}
+      {tabDropZone && (
+        <div
+          className="absolute z-10 pointer-events-none"
+          style={{
+            ...dropZoneOverlay[tabDropZone],
+            background: 'rgba(200, 128, 90, 0.12)',
+            borderRadius: '4px',
+          }}
+        />
       )}
     </div>
   );

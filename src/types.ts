@@ -6,6 +6,8 @@ export interface AppConfig {
   availableShells: ShellConfig[];
   uiFontSize: number;
   terminalFontSize: number;
+  layoutSizes?: number[];
+  aiPanelSize?: number;
 }
 
 export interface ProjectConfig {

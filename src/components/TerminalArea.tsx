@@ -46,6 +46,26 @@ function insertSplit(
   };
 }
 
+function insertSplitNode(
+  node: SplitNode,
+  targetPaneId: string,
+  direction: 'horizontal' | 'vertical',
+  newNode: SplitNode,
+  position: 'before' | 'after'
+): SplitNode {
+  if (node.type === 'leaf') {
+    if (node.pane.id === targetPaneId) {
+      const children = position === 'before' ? [newNode, node] : [node, newNode];
+      return { type: 'split', direction, children, sizes: [50, 50] };
+    }
+    return node;
+  }
+  return {
+    ...node,
+    children: node.children.map((c) => insertSplitNode(c, targetPaneId, direction, newNode, position)),
+  };
+}
+
 export function TerminalArea({ projectId, projectPath }: Props) {
   const config = useAppStore((s) => s.config);
   const projectStates = useAppStore((s) => s.projectStates);
@@ -135,6 +155,26 @@ export function TerminalArea({ projectId, projectPath }: Props) {
     [ps, activeTab, config, projectId, projectPath, updateTabLayout]
   );
 
+  const handleTabDrop = useCallback(
+    (sourceTabId: string, targetPaneId: string, direction: 'horizontal' | 'vertical', position: 'before' | 'after') => {
+      if (!ps || !activeTab) return;
+      if (sourceTabId === activeTab.id) return;
+      const sourceTab = ps.tabs.find((t) => t.id === sourceTabId);
+      if (!sourceTab) return;
+
+      const newLayout = insertSplitNode(
+        activeTab.splitLayout,
+        targetPaneId,
+        direction,
+        sourceTab.splitLayout,
+        position
+      );
+      updateTabLayout(projectId, activeTab.id, newLayout);
+      removeTab(projectId, sourceTabId);
+    },
+    [ps, activeTab, projectId, updateTabLayout, removeTab]
+  );
+
   const handleClosePane = useCallback(async (paneId: string) => {
     if (!ps || !activeTab) return;
 
@@ -171,7 +211,7 @@ export function TerminalArea({ projectId, projectPath }: Props) {
             className="absolute inset-0"
             style={{ display: tab.id === ps.activeTabId ? 'block' : 'none' }}
           >
-            <SplitLayout node={tab.splitLayout} onSplit={handleSplitPane} onClose={handleClosePane} />
+            <SplitLayout node={tab.splitLayout} onSplit={handleSplitPane} onClose={handleClosePane} onTabDrop={handleTabDrop} />
           </div>
         ))}
 

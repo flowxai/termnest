@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Allotment } from 'allotment';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from './store';
@@ -50,6 +50,29 @@ export function App() {
     }
   }, [updatePaneStatusByPty]));
 
+  // 防抖保存布局尺寸
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const saveLayoutSizes = useCallback((sizes: number[]) => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const cfg = useAppStore.getState().config;
+      const newConfig = { ...cfg, layoutSizes: sizes };
+      setConfig(newConfig);
+      invoke('save_config', { config: newConfig });
+    }, 500);
+  }, [setConfig]);
+
+  const saveAiPanelSize = useCallback((sizes: number[]) => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const cfg = useAppStore.getState().config;
+      // sizes[1] 是 AI 面板宽度
+      const newConfig = { ...cfg, aiPanelSize: sizes.length > 1 ? sizes[1] : undefined };
+      setConfig(newConfig);
+      invoke('save_config', { config: newConfig });
+    }, 500);
+  }, [setConfig]);
+
   const activeProject = config.projects.find((p) => p.id === activeProjectId);
 
   return (
@@ -79,17 +102,23 @@ export function App() {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        <Allotment>
-          <Allotment.Pane preferredSize={200} minSize={140} maxSize={350}>
+        <Allotment
+          defaultSizes={config.layoutSizes ?? [200, 280, 1000]}
+          onChange={saveLayoutSizes}
+        >
+          <Allotment.Pane minSize={140} maxSize={350}>
             <ProjectList />
           </Allotment.Pane>
 
-          <Allotment.Pane preferredSize={280} minSize={180}>
+          <Allotment.Pane minSize={180}>
             <FileTree />
           </Allotment.Pane>
 
           <Allotment.Pane>
-            <Allotment>
+            <Allotment
+              defaultSizes={config.aiPanelSize && aiPanelVisible ? [1000, config.aiPanelSize] : undefined}
+              onChange={aiPanelVisible ? saveAiPanelSize : undefined}
+            >
               <Allotment.Pane>
                 {activeProject ? (
                   <TerminalArea projectId={activeProject.id} projectPath={activeProject.path} />
@@ -101,7 +130,7 @@ export function App() {
               </Allotment.Pane>
 
               {aiPanelVisible && (
-                <Allotment.Pane preferredSize={180} minSize={140} maxSize={280} snap>
+                <Allotment.Pane preferredSize={config.aiPanelSize ?? 180} minSize={140} maxSize={280} snap>
                   <AIHistoryPanel />
                 </Allotment.Pane>
               )}
