@@ -1,51 +1,56 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { Allotment } from 'allotment';
+import { useAppStore } from './store';
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+export function App() {
+  const aiPanelVisible = useAppStore((s) => s.aiPanelVisible);
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div className="flex flex-col h-full">
+      {/* 顶部工具栏 */}
+      <div className="flex items-center gap-3 px-3 py-1.5 bg-[#1a1a2e] border-b border-[#333] text-xs text-[#a0a0c0]">
+        <span className="font-bold text-[#7c83ff]">Mini-Term</span>
+        <span className="opacity-40">|</span>
+        <span className="cursor-pointer hover:text-white">终端</span>
+        <span className="cursor-pointer hover:text-white">设置</span>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+      {/* 主体三栏 */}
+      <div className="flex-1 overflow-hidden">
+        <Allotment>
+          {/* 左栏：项目列表 */}
+          <Allotment.Pane preferredSize={200} minSize={140} maxSize={350}>
+            <div className="h-full bg-[#12121f] p-2 text-xs text-gray-400">
+              项目列表占位
+            </div>
+          </Allotment.Pane>
+
+          {/* 中栏：文件树 */}
+          <Allotment.Pane preferredSize={280} minSize={180}>
+            <div className="h-full bg-[#16162a] p-2 text-xs text-gray-400">
+              文件树占位
+            </div>
+          </Allotment.Pane>
+
+          {/* 右栏：终端 + AI 历史 */}
+          <Allotment.Pane>
+            <Allotment>
+              <Allotment.Pane>
+                <div className="h-full bg-[#0d0d1a] p-2 text-xs text-gray-400">
+                  终端区域占位
+                </div>
+              </Allotment.Pane>
+
+              {aiPanelVisible && (
+                <Allotment.Pane preferredSize={180} minSize={140} maxSize={280} snap>
+                  <div className="h-full bg-[#12121f] border-l-2 border-[#7c83ff33] p-2 text-xs text-gray-400">
+                    AI 历史占位
+                  </div>
+                </Allotment.Pane>
+              )}
+            </Allotment>
+          </Allotment.Pane>
+        </Allotment>
+      </div>
+    </div>
   );
 }
-
-export default App;
