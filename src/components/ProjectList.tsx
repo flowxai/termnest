@@ -50,7 +50,7 @@ export function ProjectList() {
 
   return (
     <div className="h-full bg-[var(--bg-surface)] flex flex-col overflow-y-auto">
-      <div className="px-3 pt-3 pb-1.5 text-[10px] text-[var(--text-muted)] uppercase tracking-[0.12em] font-medium">
+      <div className="px-3 pt-3 pb-1.5 text-sm text-[var(--text-muted)] uppercase tracking-[0.12em] font-medium">
         Projects
       </div>
 
@@ -62,7 +62,7 @@ export function ProjectList() {
           return (
             <div
               key={project.id}
-              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] cursor-pointer text-xs group transition-all duration-150 ${
+              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] cursor-pointer text-base group transition-all duration-150 ${
                 isActive
                   ? 'bg-[var(--accent-subtle)] text-[var(--accent)]'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-subtle)]'
@@ -76,7 +76,7 @@ export function ProjectList() {
               <span className="truncate flex-1">{project.name}</span>
               {aiStatus && <StatusDot status={aiStatus} />}
               <span
-                className="text-[var(--text-muted)] hover:text-[var(--color-error)] hidden group-hover:inline transition-colors text-[10px]"
+                className="text-[var(--text-muted)] hover:text-[var(--color-error)] hidden group-hover:inline transition-colors text-sm"
                 onClick={(e) => handleRemoveProject(e, project.id)}
               >
                 ✕
@@ -88,7 +88,7 @@ export function ProjectList() {
 
       <div className="p-2">
         <div
-          className="px-3 py-2 border border-dashed border-[var(--border-default)] rounded-[var(--radius-md)] text-center text-[11px] text-[var(--text-muted)] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all duration-200"
+          className="px-3 py-2 border border-dashed border-[var(--border-default)] rounded-[var(--radius-md)] text-center text-sm text-[var(--text-muted)] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all duration-200"
           onClick={handleAddProject}
         >
           + 添加项目

@@ -42,7 +42,7 @@ function TreeNode({ entry, projectRoot, depth }: TreeNodeProps) {
   return (
     <div>
       <div
-        className={`flex items-center gap-1 py-[3px] cursor-pointer hover:bg-[var(--border-subtle)] rounded-[var(--radius-sm)] text-xs transition-colors duration-100 ${
+        className={`flex items-center gap-1 py-[3px] cursor-pointer hover:bg-[var(--border-subtle)] rounded-[var(--radius-sm)] text-base transition-colors duration-100 ${
           entry.isDir ? 'text-[var(--color-folder)]' : 'text-[var(--color-file)]'
         }`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
@@ -54,12 +54,12 @@ function TreeNode({ entry, projectRoot, depth }: TreeNodeProps) {
         }}
       >
         {entry.isDir && (
-          <span className="text-[9px] w-3 text-center text-[var(--text-muted)] transition-transform duration-150"
+          <span className="text-[13px] w-3 text-center text-[var(--text-muted)] transition-transform duration-150"
             style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block' }}>
             ▾
           </span>
         )}
-        {!entry.isDir && <span className="w-3 text-center text-[var(--text-muted)] text-[8px]">·</span>}
+        {!entry.isDir && <span className="w-3 text-center text-[var(--text-muted)] text-xs">·</span>}
         <span className="truncate">{entry.name}</span>
       </div>
 
@@ -91,7 +91,7 @@ export function FileTree() {
 
   if (!project) {
     return (
-      <div className="h-full bg-[var(--bg-surface)] flex items-center justify-center text-[var(--text-muted)] text-xs">
+      <div className="h-full bg-[var(--bg-surface)] flex items-center justify-center text-[var(--text-muted)] text-base">
         选择一个项目
       </div>
     );
@@ -99,7 +99,7 @@ export function FileTree() {
 
   return (
     <div className="h-full bg-[var(--bg-surface)] flex flex-col overflow-y-auto border-l border-[var(--border-subtle)]">
-      <div className="px-3 pt-3 pb-1.5 text-[10px] text-[var(--text-muted)] uppercase tracking-[0.12em] font-medium">
+      <div className="px-3 pt-3 pb-1.5 text-sm text-[var(--text-muted)] uppercase tracking-[0.12em] font-medium">
         Files — {project.name}
       </div>
       <div className="flex-1 px-1">
