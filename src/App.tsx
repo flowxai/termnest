@@ -48,17 +48,28 @@ export function App() {
   return (
     <div className="flex flex-col h-full">
       {/* 顶部工具栏 */}
-      <div className="flex items-center gap-3 px-3 py-1.5 bg-[#1a1a2e] border-b border-[#333] text-xs text-[#a0a0c0]">
-        <span className="font-bold text-[#7c83ff]">Mini-Term</span>
-        <span className="opacity-40">|</span>
-        <span className="cursor-pointer hover:text-white">终端</span>
-        <span className="cursor-pointer hover:text-white">设置</span>
-        <span
-          className={`cursor-pointer hover:text-white ${aiPanelVisible ? 'text-[#7c83ff]' : ''}`}
-          onClick={toggleAiPanel}
-        >
-          🤖 AI
+      <div className="flex items-center gap-4 px-4 py-2 bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-xs select-none"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <span className="font-semibold tracking-wide text-[var(--accent)] text-sm" style={{ fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.05em' }}>
+          MINI-TERM
         </span>
+        <div className="w-px h-3.5 bg-[var(--border-default)]" />
+        <div className="flex items-center gap-3 text-[var(--text-muted)]" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <span className="cursor-pointer hover:text-[var(--text-primary)] transition-colors duration-150">终端</span>
+          <span className="cursor-pointer hover:text-[var(--text-primary)] transition-colors duration-150">设置</span>
+          <span
+            className={`cursor-pointer transition-colors duration-150 ${aiPanelVisible ? 'text-[var(--accent)]' : 'hover:text-[var(--text-primary)]'}`}
+            onClick={toggleAiPanel}
+          >
+            AI 历史
+          </span>
+        </div>
+        <div className="flex-1" />
+        <div className="flex items-center gap-1.5 text-[var(--text-muted)]" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <span className="w-3 h-3 rounded-full border border-[var(--border-default)] cursor-pointer hover:bg-[var(--color-success)] hover:border-transparent transition-all" />
+          <span className="w-3 h-3 rounded-full border border-[var(--border-default)] cursor-pointer hover:bg-[var(--color-warning)] hover:border-transparent transition-all" />
+          <span className="w-3 h-3 rounded-full border border-[var(--border-default)] cursor-pointer hover:bg-[var(--color-error)] hover:border-transparent transition-all" />
+        </div>
       </div>
 
       {/* 主体三栏 */}
@@ -83,7 +94,7 @@ export function App() {
                   return activeProject ? (
                     <TerminalArea projectId={activeProject.id} projectPath={activeProject.path} />
                   ) : (
-                    <div className="h-full bg-[#0d0d1a] flex items-center justify-center text-gray-500 text-sm">
+                    <div className="h-full bg-[var(--bg-terminal)] flex items-center justify-center text-[var(--text-muted)] text-sm">
                       请先在左栏添加项目
                     </div>
                   );

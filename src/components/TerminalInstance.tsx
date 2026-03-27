@@ -23,16 +23,39 @@ export function TerminalInstance({ ptyId, paneId, onSplit, onClose }: Props) {
     if (!containerRef.current) return;
 
     const term = new Terminal({
-      fontSize: 14,
-      fontFamily: 'Cascadia Code, Consolas, monospace',
+      fontSize: 13,
+      fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
+      fontWeight: '400',
+      fontWeightBold: '600',
       cursorBlink: true,
-      cursorStyle: 'block',
+      cursorStyle: 'bar',
+      cursorWidth: 2,
       scrollback: 5000,
+      letterSpacing: 0,
+      lineHeight: 1.35,
       theme: {
-        background: '#0d0d1a',
-        foreground: '#d4d4d4',
-        cursor: '#ffffff',
-        selectionBackground: '#7c83ff44',
+        background: '#100f0d',
+        foreground: '#d8d4cc',
+        cursor: '#c8805a',
+        cursorAccent: '#100f0d',
+        selectionBackground: '#c8805a30',
+        selectionForeground: '#e5e0d8',
+        black: '#2a2824',
+        red: '#d4605a',
+        green: '#6bb87a',
+        yellow: '#d4a84a',
+        blue: '#6896c8',
+        magenta: '#b08cd4',
+        cyan: '#7dcfb8',
+        white: '#d8d4cc',
+        brightBlack: '#5c5850',
+        brightRed: '#e07060',
+        brightGreen: '#80d090',
+        brightYellow: '#e0b860',
+        brightBlue: '#80aad8',
+        brightMagenta: '#c0a0e0',
+        brightCyan: '#90e0c8',
+        brightWhite: '#e5e0d8',
       },
     });
 
@@ -108,18 +131,18 @@ export function TerminalInstance({ ptyId, paneId, onSplit, onClose }: Props) {
         if (!paneId || !onSplit) return;
 
         const menu = document.createElement('div');
-        menu.className = 'fixed bg-[#1a1a2e] border border-[#333] rounded shadow-lg py-1 z-50 text-xs';
+        menu.className = 'fixed ctx-menu text-xs';
         menu.style.left = `${e.clientX}px`;
         menu.style.top = `${e.clientY}px`;
 
         const items = [
-          { label: '↔ 向右分屏', dir: 'horizontal' as const },
-          { label: '↕ 向下分屏', dir: 'vertical' as const },
+          { label: '向右分屏', dir: 'horizontal' as const },
+          { label: '向下分屏', dir: 'vertical' as const },
         ];
 
         items.forEach(({ label, dir }) => {
           const item = document.createElement('div');
-          item.className = 'px-3 py-1.5 cursor-pointer hover:bg-[#7c83ff33] text-gray-300';
+          item.className = 'ctx-menu-item';
           item.textContent = label;
           item.onclick = () => {
             onSplit(paneId, dir);
@@ -128,15 +151,13 @@ export function TerminalInstance({ ptyId, paneId, onSplit, onClose }: Props) {
           menu.appendChild(item);
         });
 
-        // 分隔线
         const sep = document.createElement('div');
-        sep.className = 'border-t border-[#333] my-1';
+        sep.className = 'ctx-menu-sep';
         menu.appendChild(sep);
 
-        // 关闭面板
         const closeItem = document.createElement('div');
-        closeItem.className = 'px-3 py-1.5 cursor-pointer hover:bg-red-900/30 text-red-400';
-        closeItem.textContent = '✕ 关闭面板';
+        closeItem.className = 'ctx-menu-item danger';
+        closeItem.textContent = '关闭面板';
         closeItem.onclick = () => {
           if (onClose) onClose(paneId);
           menu.remove();

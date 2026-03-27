@@ -49,12 +49,12 @@ export function ProjectList() {
   };
 
   return (
-    <div className="h-full bg-[#12121f] flex flex-col overflow-y-auto">
-      <div className="px-2 pt-2 pb-1 text-[10px] text-gray-600 uppercase tracking-widest">
-        项目
+    <div className="h-full bg-[var(--bg-surface)] flex flex-col overflow-y-auto">
+      <div className="px-3 pt-3 pb-1.5 text-[10px] text-[var(--text-muted)] uppercase tracking-[0.12em] font-medium">
+        Projects
       </div>
 
-      <div className="flex-1 px-1">
+      <div className="flex-1 px-1.5 space-y-0.5">
         {config.projects.map((project) => {
           const isActive = project.id === activeProjectId;
           const aiStatus = getProjectAiStatus(project.id);
@@ -62,18 +62,21 @@ export function ProjectList() {
           return (
             <div
               key={project.id}
-              className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-xs mb-0.5 group ${
+              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] cursor-pointer text-xs group transition-all duration-150 ${
                 isActive
-                  ? 'bg-[#7c83ff22] text-[#7c83ff]'
-                  : 'text-gray-500 hover:text-gray-300 hover:bg-[#ffffff08]'
+                  ? 'bg-[var(--accent-subtle)] text-[var(--accent)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-subtle)]'
               }`}
               onClick={() => setActiveProject(project.id)}
               title={project.path}
             >
-              <span className="truncate flex-1">📁 {project.name}</span>
+              {isActive && (
+                <span className="w-0.5 h-4 rounded-full bg-[var(--accent)] flex-shrink-0" />
+              )}
+              <span className="truncate flex-1">{project.name}</span>
               {aiStatus && <StatusDot status={aiStatus} />}
               <span
-                className="text-gray-700 hover:text-red-400 hidden group-hover:inline"
+                className="text-[var(--text-muted)] hover:text-[var(--color-error)] hidden group-hover:inline transition-colors text-[10px]"
                 onClick={(e) => handleRemoveProject(e, project.id)}
               >
                 ✕
@@ -83,11 +86,13 @@ export function ProjectList() {
         })}
       </div>
 
-      <div
-        className="mx-2 mb-2 px-2 py-1.5 border border-dashed border-gray-700 rounded text-center text-[11px] text-gray-600 cursor-pointer hover:border-[#7c83ff] hover:text-[#7c83ff]"
-        onClick={handleAddProject}
-      >
-        + 添加项目
+      <div className="p-2">
+        <div
+          className="px-3 py-2 border border-dashed border-[var(--border-default)] rounded-[var(--radius-md)] text-center text-[11px] text-[var(--text-muted)] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all duration-200"
+          onClick={handleAddProject}
+        >
+          + 添加项目
+        </div>
       </div>
     </div>
   );

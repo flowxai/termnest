@@ -99,13 +99,13 @@ export function TerminalArea({ projectId, projectPath }: Props) {
 
   const handleNewTabClick = useCallback((e: React.MouseEvent) => {
     const menu = document.createElement('div');
-    menu.className = 'fixed bg-[#1a1a2e] border border-[#333] rounded shadow-lg py-1 z-50 text-xs';
+    menu.className = 'fixed ctx-menu text-xs';
     menu.style.left = `${e.clientX}px`;
     menu.style.top = `${e.clientY}px`;
 
     config.availableShells.forEach((shell) => {
       const item = document.createElement('div');
-      item.className = 'px-3 py-1.5 cursor-pointer hover:bg-[#7c83ff33] text-gray-300';
+      item.className = 'ctx-menu-item';
       item.textContent = shell.name;
       item.onclick = () => {
         handleNewTab(shell);
@@ -171,7 +171,7 @@ export function TerminalArea({ projectId, projectPath }: Props) {
   }, [ps, activeTab, projectId, updateTabLayout, handleCloseTab]);
 
   return (
-    <div className="flex flex-col h-full bg-[#0d0d1a]">
+    <div className="flex flex-col h-full bg-[var(--bg-terminal)]">
       <TabBar projectId={projectId} onNewTab={handleNewTabClick} onCloseTab={handleCloseTab} />
 
       <div className="flex-1 overflow-hidden relative">
@@ -186,9 +186,10 @@ export function TerminalArea({ projectId, projectPath }: Props) {
         ))}
 
         {(!ps || ps.tabs.length === 0) && (
-          <div className="flex items-center justify-center h-full text-gray-600 text-sm">
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--text-muted)]">
+            <div className="text-3xl opacity-20">⌘</div>
             <button
-              className="px-4 py-2 border border-dashed border-gray-600 rounded hover:border-[#7c83ff] hover:text-[#7c83ff]"
+              className="px-5 py-2.5 border border-dashed border-[var(--border-default)] rounded-[var(--radius-md)] text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all duration-200"
               onClick={handleNewTabClick}
             >
               + 新建终端

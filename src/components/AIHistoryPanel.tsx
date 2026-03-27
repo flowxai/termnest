@@ -40,40 +40,45 @@ export function AIHistoryPanel() {
   }, [project?.path, setAiSessions]);
 
   return (
-    <div className="h-full bg-[#12121f] border-l-2 border-[#7c83ff33] flex flex-col overflow-hidden">
-      <div className="flex items-center gap-1 px-2.5 py-1.5 bg-[#1a1a2e] border-b border-[#333] text-[10px] text-[#7c83ff] font-bold">
-        🤖 会话历史
+    <div className="h-full bg-[var(--bg-surface)] border-l border-[var(--border-subtle)] flex flex-col overflow-hidden">
+      {/* 头部 */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-[10px] font-medium">
+        <span className="text-[var(--color-ai)]">AI Sessions</span>
         <span
-          className="ml-auto text-gray-600 cursor-pointer hover:text-white text-[9px]"
+          className="ml-auto text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] text-[9px] transition-colors"
           onClick={toggleAiPanel}
         >
-          ◂ 收起
+          ◂
         </span>
       </div>
 
+      {/* 项目标识 */}
       {project && (
-        <div className="px-2.5 py-1 border-b border-[#2a2a40] text-[10px] text-[#7c83ff] bg-[#7c83ff08]">
-          📁 {project.name}
+        <div className="px-3 py-1.5 border-b border-[var(--border-subtle)] text-[10px] text-[var(--text-muted)]">
+          {project.name}
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-1">
+      {/* 会话列表 */}
+      <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
         {aiSessions.length === 0 && (
-          <div className="text-center text-gray-600 text-[10px] mt-4">暂无会话记录</div>
+          <div className="text-center text-[var(--text-muted)] text-[10px] mt-6 opacity-60">
+            暂无会话记录
+          </div>
         )}
         {aiSessions.map((session, idx) => (
           <div
             key={session.id}
-            className={`px-2 py-1.5 rounded cursor-pointer mb-0.5 ${
+            className={`px-2.5 py-2 rounded-[var(--radius-sm)] cursor-pointer transition-colors duration-100 ${
               idx === 0
-                ? 'bg-[#7c83ff12] border-l-[3px] border-[#7c83ff]'
-                : 'hover:bg-[#ffffff06]'
+                ? 'bg-[var(--accent-subtle)] border-l-2 border-[var(--accent)]'
+                : 'hover:bg-[var(--border-subtle)]'
             }`}
           >
-            <div className={`text-[11px] ${idx === 0 ? 'text-gray-200' : 'text-gray-500'}`}>
+            <div className={`text-[11px] font-medium ${idx === 0 ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}>
               {session.sessionType === 'claude' ? 'Claude' : 'Codex'} #{aiSessions.length - idx}
             </div>
-            <div className="text-[9px] text-gray-600 mt-0.5">
+            <div className="text-[9px] text-[var(--text-muted)] mt-0.5">
               {formatTime(session.startTime)} · {session.messageCount} 轮对话
             </div>
           </div>

@@ -21,21 +21,26 @@ export function TabBar({ projectId, onNewTab, onCloseTab }: Props) {
   if (!ps) return null;
 
   return (
-    <div className="flex bg-[#1a1a2e] border-b border-[#333] text-[11px] overflow-x-auto">
+    <div className="flex bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-[11px] overflow-x-auto select-none">
       {ps.tabs.map((tab) => {
         const isActive = tab.id === ps.activeTabId;
         return (
           <div
             key={tab.id}
-            className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer border-r border-[#333] whitespace-nowrap ${
-              isActive ? 'bg-[#0d0d1a] text-[#7c83ff]' : 'text-gray-500 hover:text-gray-300'
+            className={`flex items-center gap-2 px-3 py-[7px] cursor-pointer whitespace-nowrap transition-all duration-100 relative ${
+              isActive
+                ? 'bg-[var(--bg-terminal)] text-[var(--text-primary)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]'
             }`}
             onClick={() => setActiveTab(projectId, tab.id)}
           >
+            {isActive && (
+              <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-[var(--accent)]" />
+            )}
             <StatusDot status={tab.status} />
-            <span>{getTabTitle(tab)}</span>
+            <span className="font-medium">{getTabTitle(tab)}</span>
             <span
-              className="ml-1 text-gray-600 hover:text-white"
+              className="ml-0.5 text-[var(--text-muted)] hover:text-[var(--color-error)] text-[9px] transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
                 onCloseTab(tab.id);
@@ -47,7 +52,7 @@ export function TabBar({ projectId, onNewTab, onCloseTab }: Props) {
         );
       })}
       <div
-        className="px-3 py-1.5 text-gray-600 cursor-pointer hover:text-white"
+        className="px-3 py-[7px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--accent)] transition-colors"
         onClick={onNewTab}
       >
         +
