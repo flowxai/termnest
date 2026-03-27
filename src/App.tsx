@@ -5,6 +5,7 @@ import { useAppStore } from './store';
 import { TerminalArea } from './components/TerminalArea';
 import { ProjectList } from './components/ProjectList';
 import { FileTree } from './components/FileTree';
+import { AIHistoryPanel } from './components/AIHistoryPanel';
 import { useTauriEvent } from './hooks/useTauriEvent';
 import type { AppConfig, PtyStatusChangePayload, PtyExitPayload, PaneStatus } from './types';
 
@@ -84,9 +85,7 @@ export function App() {
 
               {aiPanelVisible && (
                 <Allotment.Pane preferredSize={180} minSize={140} maxSize={280} snap>
-                  <div className="h-full bg-[#12121f] border-l-2 border-[#7c83ff33] p-2 text-xs text-gray-400">
-                    AI 历史占位
-                  </div>
+                  <AIHistoryPanel />
                 </Allotment.Pane>
               )}
             </Allotment>
