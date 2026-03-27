@@ -1,0 +1,184 @@
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use serde::Serialize;
+use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter};
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PtyOutputPayload {
+    pty_id: u32,
+    data: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PtyExitPayload {
+    pty_id: u32,
+    exit_code: i32,
+}
+
+struct PtyInstance {
+    writer: Box<dyn Write + Send>,
+    child_pid: Option<u32>,
+}
+
+#[derive(Clone)]
+pub struct PtyManager {
+    instances: Arc<Mutex<HashMap<u32, PtyInstance>>>,
+    next_id: Arc<Mutex<u32>>,
+}
+
+impl PtyManager {
+    pub fn new() -> Self {
+        Self {
+            instances: Arc::new(Mutex::new(HashMap::new())),
+            next_id: Arc::new(Mutex::new(1)),
+        }
+    }
+
+    pub fn get_pids(&self) -> HashMap<u32, Option<u32>> {
+        let instances = self.instances.lock().unwrap();
+        instances.iter().map(|(id, inst)| (*id, inst.child_pid)).collect()
+    }
+}
+
+#[tauri::command]
+pub fn create_pty(
+    app: AppHandle,
+    state: tauri::State<'_, PtyManager>,
+    shell: String,
+    args: Vec<String>,
+    cwd: String,
+) -> Result<u32, String> {
+    let pty_system = native_pty_system();
+    let pair = pty_system
+        .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+        .map_err(|e| e.to_string())?;
+
+    let mut cmd = CommandBuilder::new(&shell);
+    for arg in &args {
+        cmd.arg(arg);
+    }
+    cmd.cwd(&cwd);
+
+    let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
+    let child_pid = child.process_id();
+
+    // 分配 ID
+    let pty_id = {
+        let mut next = state.next_id.lock().unwrap();
+        let id = *next;
+        *next += 1;
+        id
+    };
+
+    let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+    let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+
+    // Channel + flush 定时器实现 16ms 批量缓冲
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    let instances_clone = state.instances.clone();
+    let pty_id_for_reader = pty_id;
+
+    // 读线程：从 PTY 阻塞读取，发到 channel
+    thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    if tx.send(buf[..n].to_vec()).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    // Flush 线程：每 16ms 批量发送
+    let app_flush = app.clone();
+    thread::spawn(move || {
+        let mut pending = Vec::new();
+
+        loop {
+            match rx.recv_timeout(Duration::from_millis(16)) {
+                Ok(data) => {
+                    pending.extend(data);
+                    // 继续收集当前可用的数据
+                    while let Ok(more) = rx.try_recv() {
+                        pending.extend(more);
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    // 刷新剩余数据
+                    if !pending.is_empty() {
+                        let data = String::from_utf8_lossy(&pending).into_owned();
+                        let _ = app_flush.emit("pty-output", PtyOutputPayload {
+                            pty_id: pty_id_for_reader, data,
+                        });
+                    }
+
+                    // 清理并发送退出事件
+                    {
+                        let mut instances = instances_clone.lock().unwrap();
+                        instances.remove(&pty_id_for_reader);
+                    }
+                    let _ = app_flush.emit("pty-exit", PtyExitPayload {
+                        pty_id: pty_id_for_reader,
+                        exit_code: 0,
+                    });
+                    return;
+                }
+            }
+
+            // 发送已缓冲数据
+            if !pending.is_empty() {
+                let data = String::from_utf8_lossy(&pending).into_owned();
+                let _ = app_flush.emit("pty-output", PtyOutputPayload {
+                    pty_id: pty_id_for_reader, data,
+                });
+                pending.clear();
+            }
+        }
+    });
+
+    // 存储实例
+    {
+        let mut instances = state.instances.lock().unwrap();
+        instances.insert(pty_id, PtyInstance {
+            writer,
+            child_pid,
+        });
+    }
+
+    Ok(pty_id)
+}
+
+#[tauri::command]
+pub fn write_pty(state: tauri::State<'_, PtyManager>, pty_id: u32, data: String) -> Result<(), String> {
+    let mut instances = state.instances.lock().unwrap();
+    let instance = instances.get_mut(&pty_id).ok_or("PTY not found")?;
+    instance.writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+    instance.writer.flush().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn resize_pty(_pty_id: u32, _cols: u16, _rows: u16) -> Result<(), String> {
+    // resize 需要 MasterPty 引用，当前简化实现先跳过
+    // 实际可通过存储 master Arc 或使用 ConPTY API 实现
+    Ok(())
+}
+
+#[tauri::command]
+pub fn kill_pty(state: tauri::State<'_, PtyManager>, pty_id: u32) -> Result<(), String> {
+    let mut instances = state.instances.lock().unwrap();
+    instances.remove(&pty_id);
+    Ok(())
+}
