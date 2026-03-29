@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Allotment } from 'allotment';
 import { invoke } from '@tauri-apps/api/core';
-import { useAppStore } from './store';
+import { useAppStore, restoreLayout, flushLayoutToConfig } from './store';
 import { TerminalArea } from './components/TerminalArea';
 import { ProjectList } from './components/ProjectList';
 import { FileTree } from './components/FileTree';
@@ -34,6 +34,13 @@ export function App() {
         projectStates: newStates,
         activeProjectId: cfg.projects[0]?.id ?? null,
       });
+
+      // 异步恢复各项目的终端布局（不阻塞 UI，恢复完成后 store 自动更新）
+      Promise.all(
+        cfg.projects
+          .filter((p) => p.savedLayout && p.savedLayout.tabs.length > 0)
+          .map((p) => restoreLayout(p.id, p.savedLayout!, p.path, cfg))
+      ).catch(console.error);
     });
   }, []);
 
@@ -46,6 +53,27 @@ export function App() {
       updatePaneStatusByPty(payload.ptyId, 'error');
     }
   }, [updatePaneStatusByPty]));
+
+  // 关闭窗口时立即保存布局
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const { activeProjectId } = useAppStore.getState();
+      if (activeProjectId) {
+        flushLayoutToConfig(activeProjectId);
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  // 切换项目时保存前一个项目的布局
+  const prevProjectRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevProjectRef.current && prevProjectRef.current !== activeProjectId) {
+      flushLayoutToConfig(prevProjectRef.current);
+    }
+    prevProjectRef.current = activeProjectId;
+  }, [activeProjectId]);
 
   // 防抖保存布局尺寸
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
