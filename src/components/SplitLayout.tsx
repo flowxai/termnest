@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Allotment } from 'allotment';
 import { TerminalInstance } from './TerminalInstance';
 import type { SplitNode } from '../types';
@@ -31,12 +32,16 @@ export function SplitLayout({ node, onSplit, onClose, onTabDrop, onLayoutChange 
     );
   }
 
-  // Allotment onChange 返回像素值，需转换为比例值
+  // Allotment onChange 返回像素值，防抖后转比例值更新 store
+  const rafRef = useRef<number>(0);
   const handleSizesChange = (sizes: number[]) => {
     if (!onLayoutChange) return;
-    const total = sizes.reduce((a, b) => a + b, 0);
-    const proportional = total > 0 ? sizes.map((s) => (s / total) * 100) : sizes;
-    onLayoutChange({ ...node, sizes: proportional });
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      const total = sizes.reduce((a, b) => a + b, 0);
+      const proportional = total > 0 ? sizes.map((s) => (s / total) * 100) : sizes;
+      onLayoutChange({ ...node, sizes: proportional });
+    });
   };
 
   const handleChildLayoutChange = (index: number, updatedChild: SplitNode) => {

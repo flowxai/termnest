@@ -37,7 +37,7 @@ pub enum SavedSplitNode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedTab {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_title: Option<String>,
     pub split_layout: SavedSplitNode,
 }

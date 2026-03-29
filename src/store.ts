@@ -143,30 +143,10 @@ export async function restoreLayout(
   });
 }
 
-// 防抖保存布局到 config
-let saveLayoutTimer: ReturnType<typeof setTimeout> | undefined;
+// 每个项目独立的防抖 timer
+const saveLayoutTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-export function saveLayoutToConfig(projectId: string) {
-  clearTimeout(saveLayoutTimer);
-  saveLayoutTimer = setTimeout(() => {
-    const { config, projectStates } = useAppStore.getState();
-    const ps = projectStates.get(projectId);
-    if (!ps) return;
-    const savedLayout = serializeLayout(ps);
-    const newConfig = {
-      ...config,
-      projects: config.projects.map((p) =>
-        p.id === projectId ? { ...p, savedLayout } : p
-      ),
-    };
-    useAppStore.getState().setConfig(newConfig);
-    invoke('save_config', { config: newConfig });
-  }, 500);
-}
-
-// 立即保存（不防抖，用于 beforeunload）
-export function flushLayoutToConfig(projectId: string) {
-  clearTimeout(saveLayoutTimer);
+function doSaveLayout(projectId: string) {
   const { config, projectStates } = useAppStore.getState();
   const ps = projectStates.get(projectId);
   if (!ps) return;
@@ -179,6 +159,25 @@ export function flushLayoutToConfig(projectId: string) {
   };
   useAppStore.getState().setConfig(newConfig);
   invoke('save_config', { config: newConfig });
+}
+
+export function saveLayoutToConfig(projectId: string) {
+  const existing = saveLayoutTimers.get(projectId);
+  if (existing) clearTimeout(existing);
+  saveLayoutTimers.set(projectId, setTimeout(() => {
+    saveLayoutTimers.delete(projectId);
+    doSaveLayout(projectId);
+  }, 500));
+}
+
+// 立即保存（不防抖，用于 beforeunload / 项目切换）
+export function flushLayoutToConfig(projectId: string) {
+  const existing = saveLayoutTimers.get(projectId);
+  if (existing) {
+    clearTimeout(existing);
+    saveLayoutTimers.delete(projectId);
+  }
+  doSaveLayout(projectId);
 }
 
 interface AppStore {
