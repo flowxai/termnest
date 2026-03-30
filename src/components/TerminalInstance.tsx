@@ -277,7 +277,7 @@ export function TerminalInstance({ ptyId, paneId, shellName, status, onSplit, on
         }}
       >
         {/* xterm.js 渲染容器 */}
-        <div ref={containerRef} className="absolute top-1.5 bottom-0 left-2.5 right-0" />
+        <div ref={containerRef} className="absolute top-1.5 bottom-0 left-2.5 right-0 cursor-none" />
 
         {/* 文件拖拽视觉提示 */}
         {dragOver && (
