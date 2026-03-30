@@ -96,7 +96,6 @@ export function App() {
         </span>
         <div className="w-px h-3.5 bg-[var(--border-default)]" />
         <div className="flex items-center gap-3 text-[var(--text-muted)]" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <span className="cursor-pointer hover:text-[var(--text-primary)] transition-colors duration-150">终端</span>
           <span className="cursor-pointer hover:text-[var(--text-primary)] transition-colors duration-150" onClick={() => setConfigOpen(true)}>设置</span>
         </div>
         <div className="flex-1" />
