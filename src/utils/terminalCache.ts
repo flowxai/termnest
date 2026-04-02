@@ -46,7 +46,7 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
     cursorBlink: true,
     cursorStyle: 'bar',
     cursorWidth: 2,
-    scrollback: 5000,
+    scrollback: 100000,
     letterSpacing: 0,
     lineHeight: 1.35,
     theme: {
