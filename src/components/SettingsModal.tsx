@@ -380,8 +380,8 @@ function SystemSettings() {
           onClick={() => handleTerminalFollowThemeChange(!config.terminalFollowTheme)}
         >
           <span
-            className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-              config.terminalFollowTheme ? 'translate-x-4' : 'translate-x-0.5'
+            className={`absolute top-0.5 left-0 w-4 h-4 rounded-full bg-white transition-transform ${
+              config.terminalFollowTheme ? 'translate-x-[18px]' : 'translate-x-0.5'
             }`}
           />
         </button>
