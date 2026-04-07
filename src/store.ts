@@ -199,7 +199,7 @@ export function toggleExpandedDir(projectId: string, path: string, expanded: boo
 // 保存展开目录到配置（防抖）
 const saveExpandedTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function doSaveExpandedDirs(projectId: string) {
+function applyExpandedDirsToStore(projectId: string) {
   const { config } = useAppStore.getState();
   const dirs = Array.from(expandedDirsMap.get(projectId) ?? []);
   const newConfig = {
@@ -209,7 +209,11 @@ function doSaveExpandedDirs(projectId: string) {
     ),
   };
   useAppStore.getState().setConfig(newConfig);
-  invoke('save_config', { config: newConfig });
+}
+
+function doSaveExpandedDirs(projectId: string) {
+  applyExpandedDirsToStore(projectId);
+  invoke('save_config', { config: useAppStore.getState().config });
 }
 
 function saveExpandedDirsToConfig(projectId: string) {
@@ -227,13 +231,13 @@ export function flushExpandedDirsToConfig(projectId: string) {
     clearTimeout(existing);
     saveExpandedTimers.delete(projectId);
   }
-  doSaveExpandedDirs(projectId);
+  applyExpandedDirsToStore(projectId);
 }
 
 // 每个项目独立的防抖 timer
 const saveLayoutTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function doSaveLayout(projectId: string) {
+function applyLayoutToStore(projectId: string) {
   const { config, projectStates } = useAppStore.getState();
   const ps = projectStates.get(projectId);
   if (!ps) return;
@@ -245,7 +249,11 @@ function doSaveLayout(projectId: string) {
     ),
   };
   useAppStore.getState().setConfig(newConfig);
-  invoke('save_config', { config: newConfig });
+}
+
+function doSaveLayout(projectId: string) {
+  applyLayoutToStore(projectId);
+  invoke('save_config', { config: useAppStore.getState().config });
 }
 
 export function saveLayoutToConfig(projectId: string) {
@@ -264,7 +272,12 @@ export function flushLayoutToConfig(projectId: string) {
     clearTimeout(existing);
     saveLayoutTimers.delete(projectId);
   }
-  doSaveLayout(projectId);
+  applyLayoutToStore(projectId);
+}
+
+/** 将当前 store 中的 config 写入磁盘（返回 Promise） */
+export function persistConfig() {
+  return invoke('save_config', { config: useAppStore.getState().config });
 }
 
 function ensureTree(config: AppConfig): AppConfig {

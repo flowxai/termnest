@@ -64,7 +64,14 @@ pub struct SavedPane {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum SavedSplitNode {
-    Leaf { pane: SavedPane },
+    Leaf {
+        /// 旧格式（单个 pane），仅用于反序列化兼容，序列化时跳过
+        #[serde(default, skip_serializing)]
+        pane: Option<SavedPane>,
+        /// 新格式（pane 数组），前端始终使用此字段
+        #[serde(default)]
+        panes: Vec<SavedPane>,
+    },
     Split {
         direction: String,
         children: Vec<SavedSplitNode>,
@@ -181,7 +188,34 @@ fn config_path(app: &AppHandle) -> PathBuf {
     dir.join("config.json")
 }
 
+/// 将旧格式 `pane`（单个）迁移到新格式 `panes`（数组）
+fn normalize_split_node(node: &mut SavedSplitNode) {
+    match node {
+        SavedSplitNode::Leaf { pane, panes } => {
+            if let Some(p) = pane.take() {
+                if panes.is_empty() {
+                    panes.push(p);
+                }
+            }
+        }
+        SavedSplitNode::Split { children, .. } => {
+            for child in children.iter_mut() {
+                normalize_split_node(child);
+            }
+        }
+    }
+}
+
 fn migrate_config(mut config: AppConfig) -> AppConfig {
+    // 迁移 SavedSplitNode: pane → panes
+    for project in config.projects.iter_mut() {
+        if let Some(layout) = project.saved_layout.as_mut() {
+            for tab in layout.tabs.iter_mut() {
+                normalize_split_node(&mut tab.split_layout);
+            }
+        }
+    }
+
     if config.project_tree.is_some() {
         config.project_groups = None;
         config.project_ordering = None;

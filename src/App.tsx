@@ -5,7 +5,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ask } from '@tauri-apps/plugin-dialog';
-import { useAppStore, restoreLayout, flushLayoutToConfig, initExpandedDirs, flushExpandedDirsToConfig } from './store';
+import { useAppStore, restoreLayout, flushLayoutToConfig, initExpandedDirs, flushExpandedDirsToConfig, persistConfig } from './store';
 import { TerminalArea } from './components/TerminalArea';
 import { ProjectList } from './components/ProjectList';
 import { FileTree } from './components/FileTree';
@@ -99,6 +99,8 @@ export function App() {
         flushLayoutToConfig(projectId);
         flushExpandedDirsToConfig(projectId);
       }
+      // flush 只更新 store，最后统一写一次磁盘
+      await persistConfig().catch(() => {});
       appWindow.destroy();
     });
     return () => { unlisten.then((fn) => fn()); };
@@ -110,6 +112,7 @@ export function App() {
     if (prevProjectRef.current && prevProjectRef.current !== activeProjectId) {
       flushLayoutToConfig(prevProjectRef.current);
       flushExpandedDirsToConfig(prevProjectRef.current);
+      persistConfig();
     }
     prevProjectRef.current = activeProjectId;
   }, [activeProjectId]);
