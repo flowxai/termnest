@@ -167,7 +167,7 @@ function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewF
           </span>
         )}
         {!entry.isDir && <span className="w-3 text-center text-[var(--text-muted)] text-xs">·</span>}
-        <span className="truncate">{entry.name}</span>
+        <span className="truncate" title={entry.name}>{entry.name}</span>
         {(() => {
           const rel = getRelativePath(entry.path, projectRoot).replace(/\\/g, '/');
           const fileStatus = gitStatusMap.get(rel);
