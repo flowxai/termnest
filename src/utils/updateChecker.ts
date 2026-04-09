@@ -1,4 +1,4 @@
-const GITHUB_REPO = 'dreamlonglll/mini-term';
+const GITHUB_REPO = 'flowxai/termnest';
 
 export interface ReleaseInfo {
   version: string;

@@ -39,7 +39,16 @@ export function showConfirm(title: string, message: string): Promise<boolean> {
 
     confirmBtn.focus();
 
+    let settled = false;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') cleanup(true);
+      if (e.key === 'Escape') cleanup(false);
+    };
+
     const cleanup = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener('keydown', handler);
       overlay.remove();
       resolve(value);
     };
@@ -47,10 +56,7 @@ export function showConfirm(title: string, message: string): Promise<boolean> {
     confirmBtn.onclick = () => cleanup(true);
     cancelBtn.onclick = () => cleanup(false);
     overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
-    document.addEventListener('keydown', function handler(e) {
-      if (e.key === 'Enter') { cleanup(true); document.removeEventListener('keydown', handler); }
-      if (e.key === 'Escape') { cleanup(false); document.removeEventListener('keydown', handler); }
-    });
+    document.addEventListener('keydown', handler);
   });
 }
 

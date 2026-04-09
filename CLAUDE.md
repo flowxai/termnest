@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**mini-term** — 一个基于 Tauri v2 的桌面终端管理器，支持多项目、多标签、分屏布局，并能感知 AI 进程（Claude/Codex）状态。
+**termnest** — 一个基于 Tauri v2 的桌面终端管理器，支持多项目、多标签、分屏布局，并能感知 AI 进程（Claude/Codex）状态。
 
 - **前端**: React 19 + TypeScript + Tailwind CSS v4 + Vite
 - **后端**: Rust (Tauri v2)，使用 `portable-pty` 管理 PTY

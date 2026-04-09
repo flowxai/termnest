@@ -4,7 +4,8 @@ type ResolvedTheme = 'light' | 'dark';
 let currentResolved: ResolvedTheme = 'dark';
 let cleanupFn: (() => void) | null = null;
 
-const STORAGE_KEY = 'mini-term-theme';
+const STORAGE_KEY = 'termnest-theme';
+const LEGACY_STORAGE_KEY = 'mini-term-theme';
 const COLOR_SCHEME_QUERY = '(prefers-color-scheme: light)';
 
 type LegacyMediaQueryList = MediaQueryList & {
@@ -52,6 +53,12 @@ function applyToDOM(theme: ResolvedTheme) {
   currentResolved = theme;
   document.documentElement.dataset.theme = theme;
   localStorage.setItem(STORAGE_KEY, theme);
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+}
+
+function readStoredTheme(): ResolvedTheme | null {
+  const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+  return stored === 'light' || stored === 'dark' ? stored : null;
 }
 
 export function getResolvedTheme(): ResolvedTheme {
@@ -64,7 +71,8 @@ export function applyTheme(mode: ThemeMode): void {
     cleanupFn = null;
   }
 
-  applyToDOM(resolveTheme(mode));
+  const initialTheme = mode === 'auto' ? (readStoredTheme() ?? resolveTheme(mode)) : resolveTheme(mode);
+  applyToDOM(initialTheme);
 
   if (mode === 'auto') {
     const mql = getColorSchemeQuery();

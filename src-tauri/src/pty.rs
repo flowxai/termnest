@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtySize, MasterPty, Child};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
@@ -7,6 +7,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
+
+use crate::config::{AppConfig, ProjectProxyMode, ProxyConfig, ProxyOverrideConfig};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +28,133 @@ struct PtyInstance {
     writer: Box<dyn Write + Send>,
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
+}
+
+#[derive(Clone)]
+enum EscapeState {
+    None,
+    Escape,
+    Csi(String),
+    Ss3,
+}
+
+impl Default for EscapeState {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Clone, Default)]
+struct InputState {
+    line: Vec<char>,
+    cursor: usize,
+    escape: EscapeState,
+}
+
+impl InputState {
+    fn clear_line(&mut self) {
+        self.line.clear();
+        self.cursor = 0;
+        self.escape = EscapeState::None;
+    }
+
+    fn insert_char(&mut self, ch: char) {
+        self.line.insert(self.cursor, ch);
+        self.cursor += 1;
+    }
+
+    fn backspace(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        self.cursor -= 1;
+        self.line.remove(self.cursor);
+    }
+
+    fn delete(&mut self) {
+        if self.cursor < self.line.len() {
+            self.line.remove(self.cursor);
+        }
+    }
+
+    fn move_left(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    fn move_right(&mut self) {
+        if self.cursor < self.line.len() {
+            self.cursor += 1;
+        }
+    }
+
+    fn move_home(&mut self) {
+        self.cursor = 0;
+    }
+
+    fn move_end(&mut self) {
+        self.cursor = self.line.len();
+    }
+
+    fn take_line(&mut self) -> String {
+        let line = self.line.iter().collect();
+        self.clear_line();
+        line
+    }
+
+    fn apply_csi(&mut self, sequence: &str) {
+        match sequence {
+            "C" => self.move_right(),
+            "D" => self.move_left(),
+            "H" | "1~" | "7~" => self.move_home(),
+            "F" | "4~" | "8~" => self.move_end(),
+            "3~" => self.delete(),
+            // Up/Down and some shell shortcuts can rewrite the whole line.
+            // We can't reconstruct them reliably from raw terminal input.
+            "A" | "B" => self.clear_line(),
+            _ => self.clear_line(),
+        }
+    }
+
+    fn apply_ss3(&mut self, code: char) {
+        match code {
+            'C' => self.move_right(),
+            'D' => self.move_left(),
+            'H' => self.move_home(),
+            'F' => self.move_end(),
+            _ => self.clear_line(),
+        }
+    }
+
+    fn consume_escape_char(&mut self, ch: char) -> bool {
+        match &mut self.escape {
+            EscapeState::None => false,
+            EscapeState::Escape => {
+                self.escape = match ch {
+                    '[' => EscapeState::Csi(String::new()),
+                    'O' => EscapeState::Ss3,
+                    _ => {
+                        self.clear_line();
+                        EscapeState::None
+                    }
+                };
+                true
+            }
+            EscapeState::Csi(sequence) => {
+                sequence.push(ch);
+                if ('@'..='~').contains(&ch) {
+                    let completed = std::mem::take(sequence);
+                    self.escape = EscapeState::None;
+                    self.apply_csi(&completed);
+                }
+                true
+            }
+            EscapeState::Ss3 => {
+                self.escape = EscapeState::None;
+                self.apply_ss3(ch);
+                true
+            }
+        }
+    }
 }
 
 const AI_COMMANDS: &[&str] = &["claude", "codex"];
@@ -50,6 +179,7 @@ const DOUBLE_CTRLC_WINDOW: Duration = Duration::from_millis(1000);
 
 /// 按下 Enter 后扫描输出以检测 AI 命令 echo 的时间窗口
 const AI_ENTER_SCAN_WINDOW: Duration = Duration::from_millis(2000);
+const OUTPUT_BACKLOG_LIMIT: usize = 512 * 1024;
 
 /// 去除 ANSI 转义序列，返回纯文本
 fn strip_ansi_codes(s: &str) -> String {
@@ -98,13 +228,110 @@ fn output_contains_ai_command(output: &str) -> bool {
     false
 }
 
+fn normalize_path(path: &str) -> String {
+    path.replace('\\', "/").trim_end_matches('/').to_lowercase()
+}
+
+fn merge_proxy(global: &ProxyConfig, override_cfg: Option<&ProxyOverrideConfig>) -> ProxyConfig {
+    let mut resolved = global.clone();
+    if let Some(override_cfg) = override_cfg {
+        if !override_cfg.all_proxy.trim().is_empty() {
+            resolved.all_proxy = override_cfg.all_proxy.clone();
+        }
+        if !override_cfg.http_proxy.trim().is_empty() {
+            resolved.http_proxy = override_cfg.http_proxy.clone();
+        }
+        if !override_cfg.https_proxy.trim().is_empty() {
+            resolved.https_proxy = override_cfg.https_proxy.clone();
+        }
+    }
+    resolved
+}
+
+fn get_locale_env() -> Vec<(String, String)> {
+    let lang = std::env::var("LANG").ok().filter(|v| !v.trim().is_empty());
+    let lc_all = std::env::var("LC_ALL").ok().filter(|v| !v.trim().is_empty());
+    let lc_ctype = std::env::var("LC_CTYPE").ok().filter(|v| !v.trim().is_empty());
+
+    let lang = lang.unwrap_or_else(|| "en_US.UTF-8".to_string());
+    let lc_ctype = lc_ctype.or_else(|| lc_all.clone()).unwrap_or_else(|| lang.clone());
+
+    let mut envs = vec![("LANG".to_string(), lang), ("LC_CTYPE".to_string(), lc_ctype)];
+    if let Some(value) = lc_all {
+        envs.push(("LC_ALL".to_string(), value));
+    }
+    envs
+}
+
+fn get_terminal_identity_env() -> Vec<(String, String)> {
+    vec![
+        ("TERM".to_string(), "xterm-256color".to_string()),
+        ("COLORTERM".to_string(), "truecolor".to_string()),
+        ("TERM_PROGRAM".to_string(), "TermNest".to_string()),
+        ("TERM_PROGRAM_VERSION".to_string(), env!("CARGO_PKG_VERSION").to_string()),
+    ]
+}
+
+fn resolve_proxy_env(config: &AppConfig, cwd: &str) -> Vec<(String, String)> {
+    let normalized_cwd = normalize_path(cwd);
+    let project = config.projects.iter().find(|p| normalize_path(&p.path) == normalized_cwd);
+
+    let mut resolved = config.proxy.clone();
+    let mut enabled = resolved.enabled;
+
+    if let Some(project) = project {
+        match project.proxy_mode {
+            ProjectProxyMode::Inherit => {}
+            ProjectProxyMode::Disabled => {
+                enabled = false;
+            }
+            ProjectProxyMode::Enabled => {
+                enabled = true;
+                resolved = merge_proxy(&resolved, project.proxy_override.as_ref());
+            }
+        }
+    }
+
+    if !enabled {
+        return Vec::new();
+    }
+
+    let mut envs = Vec::new();
+    if !resolved.all_proxy.trim().is_empty() {
+        envs.push(("ALL_PROXY".to_string(), resolved.all_proxy));
+    }
+    if !resolved.http_proxy.trim().is_empty() {
+        envs.push(("HTTP_PROXY".to_string(), resolved.http_proxy));
+    }
+    if !resolved.https_proxy.trim().is_empty() {
+        envs.push(("HTTPS_PROXY".to_string(), resolved.https_proxy));
+    }
+    envs
+}
+
+fn trim_backlog_to_limit(backlog: &mut String) {
+    if backlog.len() <= OUTPUT_BACKLOG_LIMIT {
+        return;
+    }
+
+    let overflow = backlog.len() - OUTPUT_BACKLOG_LIMIT;
+    let cut = backlog
+        .char_indices()
+        .find(|(idx, _)| *idx >= overflow)
+        .map(|(idx, _)| idx)
+        .unwrap_or(backlog.len());
+    backlog.replace_range(..cut, "");
+}
+
 #[derive(Clone)]
 pub struct PtyManager {
     instances: Arc<Mutex<HashMap<u32, PtyInstance>>>,
     next_id: Arc<Mutex<u32>>,
     last_output: Arc<Mutex<HashMap<u32, Instant>>>,
     ai_sessions: Arc<Mutex<HashSet<u32>>>,
-    input_buffers: Arc<Mutex<HashMap<u32, String>>>,
+    attached_outputs: Arc<Mutex<HashSet<u32>>>,
+    output_backlogs: Arc<Mutex<HashMap<u32, String>>>,
+    input_states: Arc<Mutex<HashMap<u32, InputState>>>,
     last_ctrlc: Arc<Mutex<HashMap<u32, Instant>>>,
     last_enter: Arc<Mutex<HashMap<u32, Instant>>>,
 }
@@ -116,7 +343,9 @@ impl PtyManager {
             next_id: Arc::new(Mutex::new(1)),
             last_output: Arc::new(Mutex::new(HashMap::new())),
             ai_sessions: Arc::new(Mutex::new(HashSet::new())),
-            input_buffers: Arc::new(Mutex::new(HashMap::new())),
+            attached_outputs: Arc::new(Mutex::new(HashSet::new())),
+            output_backlogs: Arc::new(Mutex::new(HashMap::new())),
+            input_states: Arc::new(Mutex::new(HashMap::new())),
             last_ctrlc: Arc::new(Mutex::new(HashMap::new())),
             last_enter: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -135,6 +364,29 @@ impl PtyManager {
         self.ai_sessions.lock().unwrap().contains(&pty_id)
     }
 
+    #[cfg(test)]
+    pub fn buffer_output(&self, pty_id: u32, data: &str) {
+        let mut backlogs = self.output_backlogs.lock().unwrap();
+        let backlog = backlogs.entry(pty_id).or_default();
+        backlog.push_str(data);
+        trim_backlog_to_limit(backlog);
+    }
+
+    pub fn attach_output(&self, pty_id: u32) -> Result<String, String> {
+        if !self.instances.lock().unwrap().contains_key(&pty_id) {
+            return Err("PTY not found".to_string());
+        }
+
+        self.attached_outputs.lock().unwrap().insert(pty_id);
+        let mut backlogs = self.output_backlogs.lock().unwrap();
+        Ok(backlogs.remove(&pty_id).unwrap_or_default())
+    }
+
+    pub fn clear_output_state(&self, pty_id: u32) {
+        self.attached_outputs.lock().unwrap().remove(&pty_id);
+        self.output_backlogs.lock().unwrap().remove(&pty_id);
+    }
+
     /// 追踪用户输入，检测 AI 命令（claude/codex）的执行与退出
     ///
     /// 进入 AI 会话：在 shell 中输入 claude/codex + Enter
@@ -145,52 +397,45 @@ impl PtyManager {
         let mut enter_ai = false;
         let mut exit_ai = false;
         {
-            let mut buffers = self.input_buffers.lock().unwrap();
-            let buf = buffers.entry(pty_id).or_default();
-            // 本地 ANSI 转义序列状态（xterm.js 每次发送完整转义序列）
-            let mut skip_ansi = false; // 已遇 ESC，等待 [ 或 O
-            let mut skip_csi  = false; // 在 CSI/SS3 序列中
+            let mut states = self.input_states.lock().unwrap();
+            let state = states.entry(pty_id).or_default();
             for ch in data.chars() {
-                if skip_ansi {
-                    skip_ansi = false;
-                    if ch == '[' || ch == 'O' { skip_csi = true; }
-                    continue;
-                }
-                if skip_csi {
-                    if ('@'..='~').contains(&ch) { skip_csi = false; }
+                if state.consume_escape_char(ch) {
                     continue;
                 }
                 match ch {
                     '\x1b' => {
-                        // 导航键/编辑键：清空缓冲区，防止 "[A" 等污染
-                        buf.clear();
-                        skip_ansi = true;
+                        state.escape = EscapeState::Escape;
                     }
-                    '\x03' if in_ai => {
-                        // Ctrl+C: 单次取消当前任务，连续两次退出 AI 会话
-                        let mut last = self.last_ctrlc.lock().unwrap();
-                        let now = Instant::now();
-                        if let Some(prev) = last.get(&pty_id) {
-                            if now.duration_since(*prev) < DOUBLE_CTRLC_WINDOW {
-                                exit_ai = true;
-                                last.remove(&pty_id);
+                    '\x03' => {
+                        state.clear_line();
+                        if in_ai {
+                            // Ctrl+C: single press cancels current work; double press exits the session.
+                            let mut last = self.last_ctrlc.lock().unwrap();
+                            let now = Instant::now();
+                            if let Some(prev) = last.get(&pty_id) {
+                                if now.duration_since(*prev) < DOUBLE_CTRLC_WINDOW {
+                                    exit_ai = true;
+                                    last.remove(&pty_id);
+                                } else {
+                                    last.insert(pty_id, now);
+                                }
                             } else {
                                 last.insert(pty_id, now);
                             }
-                        } else {
-                            last.insert(pty_id, now);
                         }
-                        buf.clear();
                     }
-                    '\x04' if in_ai => {
-                        // Ctrl+D (EOF) → 退出 AI 会话
-                        exit_ai = true;
-                        buf.clear();
+                    '\x04' => {
+                        state.clear_line();
+                        if in_ai {
+                            // Ctrl+D (EOF) → 退出 AI 会话
+                            exit_ai = true;
+                        }
                     }
                     '\r' | '\n' => {
                         // 记录 Enter 时间，供输出扫描用
                         self.last_enter.lock().unwrap().insert(pty_id, Instant::now());
-                        let cmd = buf.trim().to_lowercase();
+                        let cmd = state.take_line().trim().to_lowercase();
                         if in_ai {
                             // AI 会话中：识别显式退出命令
                             if AI_EXIT_COMMANDS.iter().any(|&c| cmd == c) {
@@ -211,10 +456,11 @@ impl PtyManager {
                             });
                             if is_ai_cmd && !has_non_interactive_flag { enter_ai = true; }
                         }
-                        buf.clear();
                     }
-                    '\x7f' | '\x08' => { buf.pop(); }
-                    c if c >= ' ' => buf.push(c),
+                    '\x7f' | '\x08' => {
+                        state.backspace();
+                    }
+                    c if c >= ' ' => state.insert_char(c),
                     _ => {}
                 }
             }
@@ -247,11 +493,19 @@ pub fn create_pty(
 
     // Advertise terminal capabilities so TUI apps (Claude Code, etc.)
     // enable colors and advanced cursor rendering.
-    cmd.env("TERM", "xterm-256color");
-    cmd.env("COLORTERM", "truecolor");
-    // Ensure UTF-8 encoding for proper CJK/emoji rendering.
-    // Only set LC_CTYPE to avoid overriding the user's locale preferences.
-    cmd.env("LC_CTYPE", "UTF-8");
+    // NO_COLOR disables colors in all compliant programs (no-color.org);
+    // remove it so embedded TUI apps like Codex render correctly.
+    cmd.env_remove("NO_COLOR");
+    for (key, value) in get_terminal_identity_env() {
+        cmd.env(key, value);
+    }
+    for (key, value) in get_locale_env() {
+        cmd.env(key, value);
+    }
+    let config = crate::config::load_config_from_disk(&app);
+    for (key, value) in resolve_proxy_env(&config, &cwd) {
+        cmd.env(key, value);
+    }
 
     let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
 
@@ -290,24 +544,39 @@ pub fn create_pty(
     let last_output = state.last_output.clone();
     let ai_sessions_flush = state.ai_sessions.clone();
     let last_enter_flush = state.last_enter.clone();
+    let output_backlogs_flush = state.output_backlogs.clone();
+    let attached_outputs_flush = state.attached_outputs.clone();
     thread::spawn(move || {
         let mut pending = Vec::new();
 
         loop {
-            match rx.recv_timeout(Duration::from_millis(16)) {
+            // 阻塞等待首个数据块，然后立即 drain 队列中已有数据并 flush。
+            // 比固定 16ms 定时器延迟低得多：单字节输入立即发送，
+            // 连续突发数据自然合并（try_recv 在有更多数据时持续读取）。
+            match rx.recv() {
                 Ok(data) => {
                     pending.extend(data);
                     while let Ok(more) = rx.try_recv() {
                         pending.extend(more);
                     }
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(mpsc::RecvError) => {
                     if !pending.is_empty() {
                         let data = String::from_utf8_lossy(&pending).into_owned();
-                        let _ = app_flush.emit("pty-output", PtyOutputPayload {
-                            pty_id: pty_id_for_reader, data,
-                        });
+                        let attached = attached_outputs_flush
+                            .lock()
+                            .unwrap()
+                            .contains(&pty_id_for_reader);
+                        if attached {
+                            let _ = app_flush.emit("pty-output", PtyOutputPayload {
+                                pty_id: pty_id_for_reader, data,
+                            });
+                        } else {
+                            let mut backlogs = output_backlogs_flush.lock().unwrap();
+                            let backlog = backlogs.entry(pty_id_for_reader).or_default();
+                            backlog.push_str(&data);
+                            trim_backlog_to_limit(backlog);
+                        }
                     }
 
                     let exit_code = {
@@ -381,9 +650,20 @@ pub fn create_pty(
                         }
                     }
 
-                    let _ = app_flush.emit("pty-output", PtyOutputPayload {
-                        pty_id: pty_id_for_reader, data,
-                    });
+                    let attached = attached_outputs_flush
+                        .lock()
+                        .unwrap()
+                        .contains(&pty_id_for_reader);
+                    if attached {
+                        let _ = app_flush.emit("pty-output", PtyOutputPayload {
+                            pty_id: pty_id_for_reader, data: data.clone(),
+                        });
+                    } else {
+                        let mut backlogs = output_backlogs_flush.lock().unwrap();
+                        let backlog = backlogs.entry(pty_id_for_reader).or_default();
+                        backlog.push_str(&data);
+                        trim_backlog_to_limit(backlog);
+                    }
                     if let Ok(mut map) = last_output.lock() {
                         map.insert(pty_id_for_reader, Instant::now());
                     }
@@ -414,6 +694,14 @@ pub fn create_pty(
 }
 
 #[tauri::command]
+pub fn attach_pty_output(
+    state: tauri::State<'_, PtyManager>,
+    pty_id: u32,
+) -> Result<String, String> {
+    state.attach_output(pty_id)
+}
+
+#[tauri::command]
 pub fn write_pty(state: tauri::State<'_, PtyManager>, pty_id: u32, data: String) -> Result<(), String> {
     {
         let mut instances = state.instances.lock().unwrap();
@@ -423,6 +711,18 @@ pub fn write_pty(state: tauri::State<'_, PtyManager>, pty_id: u32, data: String)
     }
     state.track_input(pty_id, &data);
     Ok(())
+}
+
+#[tauri::command]
+pub fn write_pty_binary(
+    state: tauri::State<'_, PtyManager>,
+    pty_id: u32,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    let mut instances = state.instances.lock().unwrap();
+    let instance = instances.get_mut(&pty_id).ok_or("PTY not found")?;
+    instance.writer.write_all(&data).map_err(|e| e.to_string())?;
+    instance.writer.flush().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -440,7 +740,8 @@ pub fn kill_pty(state: tauri::State<'_, PtyManager>, pty_id: u32) -> Result<(), 
     let instance = state.instances.lock().unwrap().remove(&pty_id);
     state.last_output.lock().unwrap().remove(&pty_id);
     state.ai_sessions.lock().unwrap().remove(&pty_id);
-    state.input_buffers.lock().unwrap().remove(&pty_id);
+    state.clear_output_state(pty_id);
+    state.input_states.lock().unwrap().remove(&pty_id);
     state.last_ctrlc.lock().unwrap().remove(&pty_id);
     state.last_enter.lock().unwrap().remove(&pty_id);
 
@@ -660,5 +961,137 @@ mod tests {
             mgr.track_input(1, &ch.to_string());
         }
         assert!(mgr.is_ai_session(1));
+    }
+
+    #[test]
+    fn left_right_arrows_preserve_inline_edit_for_claude() {
+        let mgr = PtyManager::new();
+        mgr.track_input(1, "clade");
+        mgr.track_input(1, "\x1b[D");
+        mgr.track_input(1, "\x1b[D");
+        mgr.track_input(1, "u");
+        mgr.track_input(1, "\x1b[C");
+        mgr.track_input(1, "\x1b[C");
+        mgr.track_input(1, "\r");
+        assert!(mgr.is_ai_session(1));
+    }
+
+    #[test]
+    fn split_escape_sequence_still_moves_cursor() {
+        let mgr = PtyManager::new();
+        mgr.track_input(1, "clade");
+        mgr.track_input(1, "\x1b");
+        mgr.track_input(1, "[D");
+        mgr.track_input(1, "\x1b");
+        mgr.track_input(1, "[D");
+        mgr.track_input(1, "u\r");
+        assert!(mgr.is_ai_session(1));
+    }
+
+    #[test]
+    fn edited_non_interactive_flag_does_not_start_ai_session() {
+        let mgr = PtyManager::new();
+        mgr.track_input(1, "claude --versin");
+        mgr.track_input(1, "\x1b[D");
+        mgr.track_input(1, "o\r");
+        assert!(!mgr.is_ai_session(1));
+    }
+
+    #[test]
+    fn resolve_proxy_uses_global_when_project_inherits() {
+        let mut config = AppConfig::default();
+        config.proxy.enabled = true;
+        config.proxy.all_proxy = "socks5://127.0.0.1:7897".into();
+        config.projects.push(crate::config::ProjectConfig {
+            id: "p1".into(),
+            name: "proj".into(),
+            path: "/tmp/proj".into(),
+            saved_layout: None,
+            expanded_dirs: vec![],
+            proxy_mode: ProjectProxyMode::Inherit,
+            proxy_override: None,
+        });
+
+        let envs = resolve_proxy_env(&config, "/tmp/proj");
+        assert_eq!(envs, vec![("ALL_PROXY".into(), "socks5://127.0.0.1:7897".into())]);
+    }
+
+    #[test]
+    fn resolve_proxy_can_disable_project() {
+        let mut config = AppConfig::default();
+        config.proxy.enabled = true;
+        config.proxy.http_proxy = "http://127.0.0.1:7897".into();
+        config.projects.push(crate::config::ProjectConfig {
+            id: "p1".into(),
+            name: "proj".into(),
+            path: "/tmp/proj".into(),
+            saved_layout: None,
+            expanded_dirs: vec![],
+            proxy_mode: ProjectProxyMode::Disabled,
+            proxy_override: None,
+        });
+
+        assert!(resolve_proxy_env(&config, "/tmp/proj").is_empty());
+    }
+
+    #[test]
+    fn resolve_proxy_can_override_project_values() {
+        let mut config = AppConfig::default();
+        config.proxy.enabled = true;
+        config.proxy.http_proxy = "http://127.0.0.1:7897".into();
+        config.proxy.https_proxy = "http://127.0.0.1:7897".into();
+        config.projects.push(crate::config::ProjectConfig {
+            id: "p1".into(),
+            name: "proj".into(),
+            path: "/tmp/proj".into(),
+            saved_layout: None,
+            expanded_dirs: vec![],
+            proxy_mode: ProjectProxyMode::Enabled,
+            proxy_override: Some(ProxyOverrideConfig {
+                all_proxy: "socks5://127.0.0.1:7898".into(),
+                http_proxy: String::new(),
+                https_proxy: String::new(),
+            }),
+        });
+
+        let envs = resolve_proxy_env(&config, "/tmp/proj");
+        assert!(envs.contains(&("ALL_PROXY".into(), "socks5://127.0.0.1:7898".into())));
+        assert!(envs.contains(&("HTTP_PROXY".into(), "http://127.0.0.1:7897".into())));
+        assert!(envs.contains(&("HTTPS_PROXY".into(), "http://127.0.0.1:7897".into())));
+    }
+
+    #[test]
+    fn terminal_identity_env_includes_termnest_markers() {
+        let envs = get_terminal_identity_env();
+        assert!(envs.contains(&("TERM".into(), "xterm-256color".into())));
+        assert!(envs.contains(&("COLORTERM".into(), "truecolor".into())));
+        assert!(envs.contains(&("TERM_PROGRAM".into(), "TermNest".into())));
+        assert!(envs.iter().any(|(k, v)| k == "TERM_PROGRAM_VERSION" && !v.is_empty()));
+    }
+
+    #[test]
+    fn locale_env_has_utf8_defaults() {
+        let envs = get_locale_env();
+        assert!(envs.iter().any(|(k, v)| k == "LANG" && v.ends_with("UTF-8")));
+        assert!(envs.iter().any(|(k, v)| k == "LC_CTYPE" && v.ends_with("UTF-8")));
+    }
+
+    #[test]
+    fn backlog_is_trimmed_to_recent_output() {
+        let mut backlog = "a".repeat(OUTPUT_BACKLOG_LIMIT);
+        backlog.push_str("bcd");
+        trim_backlog_to_limit(&mut backlog);
+        assert_eq!(backlog.len(), OUTPUT_BACKLOG_LIMIT);
+        assert!(backlog.ends_with("bcd"));
+    }
+
+    #[test]
+    fn buffer_output_keeps_recent_suffix() {
+        let mgr = PtyManager::new();
+        mgr.buffer_output(1, &"x".repeat(OUTPUT_BACKLOG_LIMIT));
+        mgr.buffer_output(1, "tail");
+        let backlog = mgr.output_backlogs.lock().unwrap().get(&1).cloned().unwrap();
+        assert_eq!(backlog.len(), OUTPUT_BACKLOG_LIMIT);
+        assert!(backlog.ends_with("tail"));
     }
 }

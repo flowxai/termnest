@@ -15,6 +15,9 @@ global.localStorage = {
   setItem(key, value) {
     storage.set(key, value);
   },
+  removeItem(key) {
+    storage.delete(key);
+  },
 };
 
 global.window = {
@@ -41,5 +44,5 @@ const { applyTheme, getResolvedTheme } = require('../.tmp-tests/themeManager.js'
 assert.doesNotThrow(() => applyTheme('auto'));
 assert.equal(getResolvedTheme(), 'dark');
 assert.equal(dataset.theme, 'dark');
-assert.equal(storage.get('mini-term-theme'), 'dark');
+assert.equal(storage.get('termnest-theme'), 'dark');
 assert.equal(typeof mediaQueryListener, 'function');

@@ -23,6 +23,18 @@ export interface AppConfig {
   middleColumnSizes?: number[];
   theme: 'auto' | 'light' | 'dark';
   terminalFollowTheme: boolean;
+  proxy: ProxyConfig;
+  sessionAliases: Record<string, Record<string, string>>;
+  sessionPins: Record<string, Record<string, boolean>>;
+}
+
+export type NotificationKind = 'info' | 'success' | 'warning' | 'error';
+
+export interface AppNotification {
+  id: string;
+  title?: string;
+  message: string;
+  kind: NotificationKind;
 }
 
 export interface ProjectConfig {
@@ -31,12 +43,29 @@ export interface ProjectConfig {
   path: string;
   savedLayout?: SavedProjectLayout;
   expandedDirs?: string[];
+  proxyMode: ProjectProxyMode;
+  proxyOverride?: ProxyOverrideConfig;
 }
 
 export interface ShellConfig {
   name: string;
   command: string;
   args?: string[];
+}
+
+export type ProjectProxyMode = 'inherit' | 'enabled' | 'disabled';
+
+export interface ProxyConfig {
+  enabled: boolean;
+  allProxy: string;
+  httpProxy: string;
+  httpsProxy: string;
+}
+
+export interface ProxyOverrideConfig {
+  allProxy: string;
+  httpProxy: string;
+  httpsProxy: string;
 }
 
 // === 布局持久化 ===
@@ -67,6 +96,29 @@ export interface ProjectState {
   id: string;
   tabs: TerminalTab[];
   activeTabId: string;
+}
+
+export type EditorMode = 'split' | 'editor-only';
+
+export interface EditorDocumentState {
+  path: string;
+  name: string;
+  draftContent: string;
+  savedContent: string;
+  dirty: boolean;
+  loading: boolean;
+  error?: string;
+  isBinary: boolean;
+  tooLarge: boolean;
+  lastKnownModifiedMs?: number;
+  externallyModified: boolean;
+}
+
+export interface WorkspaceState {
+  projectId: string;
+  openEditors: EditorDocumentState[];
+  activeEditorPath: string | null;
+  editorMode: EditorMode;
 }
 
 export interface TerminalTab {
@@ -170,6 +222,16 @@ export interface FileContentResult {
   content: string;
   isBinary: boolean;
   tooLarge: boolean;
+}
+
+export interface FileMetadataResult {
+  isBinary: boolean;
+  tooLarge: boolean;
+  modifiedMs: number;
+}
+
+export interface WriteFileResult {
+  modifiedMs: number;
 }
 
 // === Git 历史 ===

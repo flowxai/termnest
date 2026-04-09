@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, genId } from '../store';
 import { TerminalInstance } from './TerminalInstance';
@@ -18,7 +18,11 @@ interface Props {
 
 export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNode }: Props) {
   const config = useAppStore((s) => s.config);
+  const pushNotification = useAppStore((s) => s.pushNotification);
   const [headerHover, setHeaderHover] = useState(false);
+  const nodeRef = useRef(node);
+  nodeRef.current = node;
+  const showPaneTabs = node.panes.length > 1;
 
   const activePane = node.panes.find((p) => p.id === node.activePaneId) ?? node.panes[0];
 
@@ -26,13 +30,41 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
     const shell = selectedShell
       ?? config.availableShells.find((s) => s.name === config.defaultShell)
       ?? config.availableShells[0];
-    if (!shell) return;
+    if (!shell) {
+      pushNotification({
+        id: genId(),
+        title: '无法新建终端',
+        message: '请先在设置中配置至少一个可用的 shell。',
+        kind: 'error',
+      });
+      return;
+    }
 
-    const ptyId = await invoke<number>('create_pty', {
-      shell: shell.command,
-      args: shell.args ?? [],
-      cwd: projectPath,
-    });
+    let ptyId: number;
+    try {
+      ptyId = await invoke<number>('create_pty', {
+        shell: shell.command,
+        args: shell.args ?? [],
+        cwd: projectPath,
+      });
+    } catch (error) {
+      pushNotification({
+        id: genId(),
+        title: '终端启动失败',
+        message: error instanceof Error ? error.message : String(error),
+        kind: 'error',
+      });
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const { getOrCreateTerminal } = await import('../utils/terminalCache');
+        getOrCreateTerminal(ptyId);
+      } catch {
+        // Pane 挂载时会兜底创建；这里预热只是为了避免启动输出在挂载前丢失。
+      }
+    }
 
     const newPane: PaneState = {
       id: genId(),
@@ -41,12 +73,14 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
       ptyId,
     };
 
+    const currentNode = nodeRef.current;
+
     onUpdateNode({
-      ...node,
-      panes: [...node.panes, newPane],
+      ...currentNode,
+      panes: [...currentNode.panes, newPane],
       activePaneId: newPane.id,
     });
-  }, [config, projectPath, node, onUpdateNode]);
+  }, [config, projectPath, pushNotification, onUpdateNode]);
 
   const handleNewTabClick = useCallback((e: React.MouseEvent) => {
     if (config.availableShells.length <= 1) {
@@ -64,141 +98,187 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
   }, [config.availableShells, handleNewTab]);
 
   const handleCloseTab = useCallback(async (paneId: string) => {
-    const pane = node.panes.find((p) => p.id === paneId);
+    const pane = nodeRef.current.panes.find((p) => p.id === paneId);
     if (!pane) return;
 
-    const label = pane.customTitle || pane.shellName;
     const hasAi = pane.status === 'ai-working' || pane.status === 'ai-idle';
-    const title = hasAi ? '关闭 AI 对话' : '关闭终端';
-    const message = hasAi
-      ? `终端「${label}」正在运行 AI 对话，关闭后对话将被终止，确定继续吗？`
-      : `确定要关闭终端「${label}」吗？`;
-
-    const confirmed = await showConfirm(title, message);
-    if (!confirmed) return;
+    if (hasAi) {
+      const label = pane.customTitle || pane.shellName;
+      const confirmed = await showConfirm(
+        '关闭 AI 对话',
+        `终端「${label}」正在运行 AI 对话，关闭后对话将被终止，确定继续吗？`,
+      );
+      if (!confirmed) return;
+    }
 
     await invoke('kill_pty', { ptyId: pane.ptyId });
     disposeTerminal(pane.ptyId);
 
-    const remaining = node.panes.filter((p) => p.id !== paneId);
+    const currentNode = nodeRef.current;
+    const remaining = currentNode.panes.filter((p) => p.id !== paneId);
+    if (remaining.length === currentNode.panes.length) return;
+
     if (remaining.length === 0) {
       onClosePane();
       return;
     }
 
-    const newActive = node.activePaneId === paneId
+    const newActive = currentNode.activePaneId === paneId
       ? (remaining[remaining.length - 1]?.id ?? remaining[0].id)
-      : node.activePaneId;
+      : currentNode.activePaneId;
 
     onUpdateNode({
-      ...node,
+      ...currentNode,
       panes: remaining,
       activePaneId: newActive,
     });
-  }, [node, onClosePane, onUpdateNode]);
+  }, [onClosePane, onUpdateNode]);
 
   const handleRenameTab = useCallback(async (paneId: string) => {
-    const pane = node.panes.find((p) => p.id === paneId);
+    const currentNode = nodeRef.current;
+    const pane = currentNode.panes.find((p) => p.id === paneId);
     if (!pane) return;
     const newTitle = await showPrompt('重命名终端', pane.customTitle || pane.shellName);
     if (newTitle === null) return;
+
+    const latestNode = nodeRef.current;
     onUpdateNode({
-      ...node,
-      panes: node.panes.map((p) =>
+      ...latestNode,
+      panes: latestNode.panes.map((p) =>
         p.id === paneId ? { ...p, customTitle: newTitle.trim() || undefined } : p
       ),
     });
-  }, [node, onUpdateNode]);
+  }, [onUpdateNode]);
 
   const handleSetActive = useCallback((paneId: string) => {
-    if (paneId !== node.activePaneId) {
-      onUpdateNode({ ...node, activePaneId: paneId });
+    const currentNode = nodeRef.current;
+    if (paneId !== currentNode.activePaneId) {
+      onUpdateNode({ ...currentNode, activePaneId: paneId });
     }
-  }, [node, onUpdateNode]);
+  }, [onUpdateNode]);
 
   const handleClosePaneGroup = useCallback(async () => {
-    const aiCount = node.panes.filter(
+    const currentNode = nodeRef.current;
+    const aiCount = currentNode.panes.filter(
       (p) => p.status === 'ai-working' || p.status === 'ai-idle'
     ).length;
-    const title = aiCount > 0 ? '关闭 AI 对话' : '关闭终端';
-    const message = aiCount > 0
-      ? `该区域内有 ${aiCount} 个终端正在运行 AI 对话，关闭后对话将被终止，确定继续吗？`
-      : '确定要关闭该区域内所有终端吗？';
+    if (aiCount > 0) {
+      const confirmed = await showConfirm(
+        '关闭 AI 对话',
+        `该区域内有 ${aiCount} 个终端正在运行 AI 对话，关闭后对话将被终止，确定继续吗？`,
+      );
+      if (!confirmed) return;
+    }
 
-    const confirmed = await showConfirm(title, message);
-    if (!confirmed) return;
-
-    for (const pane of node.panes) {
+    for (const pane of nodeRef.current.panes) {
       await invoke('kill_pty', { ptyId: pane.ptyId });
       disposeTerminal(pane.ptyId);
     }
     onClosePane();
-  }, [node.panes, onClosePane]);
+  }, [onClosePane]);
 
   if (!activePane) return null;
 
   return (
-    <div className="w-full h-full flex flex-col">
-      {/* Tab bar */}
-      <div
-        className="flex bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-[11px] overflow-x-auto select-none shrink-0"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        onMouseEnter={() => setHeaderHover(true)}
-        onMouseLeave={() => setHeaderHover(false)}
-      >
-        {node.panes.map((pane) => {
-          const isActive = pane.id === activePane.id;
-          return (
-            <div
-              key={pane.id}
-              className={`flex items-center gap-1.5 px-3 py-[3px] cursor-pointer whitespace-nowrap transition-all duration-100 relative ${
-                isActive
-                  ? 'bg-[var(--bg-terminal)] text-[var(--text-primary)]'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]'
-              }`}
-              onClick={() => handleSetActive(pane.id)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                showContextMenu(e.clientX, e.clientY, [
-                  { label: '重命名', onClick: () => handleRenameTab(pane.id) },
-                ]);
-              }}
-            >
-              {isActive && (
-                <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-[var(--accent)]" />
-              )}
-              <StatusDot status={pane.status} />
-              <span className="font-medium">{pane.customTitle || pane.shellName}</span>
-              <span
-                className="ml-0.5 text-[var(--text-muted)] hover:text-[var(--color-error)] text-[12px] transition-colors"
-                onClick={(e) => {
+    <div
+      className="w-full h-full flex flex-col"
+      onMouseEnter={() => setHeaderHover(true)}
+      onMouseLeave={() => setHeaderHover(false)}
+    >
+      {showPaneTabs && (
+        <div
+          className="flex bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-[11px] overflow-x-auto select-none shrink-0"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          {node.panes.map((pane) => {
+            const isActive = pane.id === activePane.id;
+            return (
+              <div
+                key={pane.id}
+                className={`flex items-center gap-1.5 px-3 py-[3px] cursor-pointer whitespace-nowrap transition-all duration-100 relative ${
+                  isActive
+                    ? 'bg-[var(--bg-terminal)] text-[var(--text-primary)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]'
+                }`}
+                onClick={() => handleSetActive(pane.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
-                  handleCloseTab(pane.id);
+                  showContextMenu(e.clientX, e.clientY, [
+                    { label: '重命名', onClick: () => handleRenameTab(pane.id) },
+                  ]);
                 }}
+              >
+                {isActive && (
+                  <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-[var(--accent)]" />
+                )}
+                <StatusDot status={pane.status} />
+                <span className="font-medium">{pane.customTitle || pane.shellName}</span>
+                <span
+                  className="ml-0.5 text-[var(--text-muted)] hover:text-[var(--color-error)] text-[12px] transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCloseTab(pane.id);
+                  }}
+                >
+                  ✕
+                </span>
+              </div>
+            );
+          })}
+
+          <div
+            className="px-2 py-[3px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--accent)] transition-colors text-[12px]"
+            onClick={handleNewTabClick}
+          >
+            +
+          </div>
+
+          <div className="ml-auto flex items-center gap-0.5 px-2 text-[12px]">
+            <div
+              className="flex items-center gap-0.5 transition-opacity duration-150"
+              style={{ opacity: headerHover ? 1 : 0 }}
+            >
+              <span
+                className="text-[var(--text-muted)] hover:text-[var(--accent)] cursor-pointer transition-colors px-0.5"
+                title="Split right"
+                onClick={() => onSplit(activePane.id, 'horizontal')}
+              >
+                ┃
+              </span>
+              <span
+                className="text-[var(--text-muted)] hover:text-[var(--accent)] cursor-pointer transition-colors px-0.5"
+                title="Split down"
+                onClick={() => onSplit(activePane.id, 'vertical')}
+              >
+                ━
+              </span>
+              <span
+                className="text-[var(--text-muted)] hover:text-[var(--color-error)] cursor-pointer transition-colors pl-0.5"
+                title="Close pane"
+                onClick={handleClosePaneGroup}
               >
                 ✕
               </span>
             </div>
-          );
-        })}
-
-        {/* "+" button */}
-        <div
-          className="px-2 py-[3px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--accent)] transition-colors text-[12px]"
-          onClick={handleNewTabClick}
-        >
-          +
+          </div>
         </div>
+      )}
 
-        {/* Right-aligned split/close controls (on hover) */}
-        <div
-          className="ml-auto flex items-center gap-0.5 px-2 text-[12px]"
-        >
+      {/* Active terminal */}
+      <div className="flex-1 overflow-hidden relative">
+        {!showPaneTabs && (
           <div
-            className="flex items-center gap-0.5 transition-opacity duration-150"
+            className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)]/85 border border-[var(--border-subtle)] px-1.5 py-1 text-[12px] backdrop-blur-sm transition-opacity duration-150"
             style={{ opacity: headerHover ? 1 : 0 }}
           >
+            <span
+              className="text-[var(--text-muted)] hover:text-[var(--accent)] cursor-pointer transition-colors px-0.5"
+              title="New tab"
+              onClick={handleNewTabClick}
+            >
+              +
+            </span>
             <span
               className="text-[var(--text-muted)] hover:text-[var(--accent)] cursor-pointer transition-colors px-0.5"
               title="Split right"
@@ -221,11 +301,7 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
               ✕
             </span>
           </div>
-        </div>
-      </div>
-
-      {/* Active terminal */}
-      <div className="flex-1 overflow-hidden relative">
+        )}
         {node.panes.map((pane) => (
           <div
             key={pane.ptyId}

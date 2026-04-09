@@ -17,6 +17,7 @@ import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { useAppStore } from '../store';
 import type { PtyOutputPayload } from '../types';
 import { getResolvedTheme } from './themeManager';
+import { createPtyWriteQueue } from './ptyWriteQueue';
 
 export interface CachedTerminal {
   term: Terminal;
@@ -26,6 +27,9 @@ export interface CachedTerminal {
 
 interface CachedEntry extends CachedTerminal {
   cleanup: () => void;
+  attached: boolean;
+  attachPromise?: Promise<void>;
+  unlisten?: () => void;
 }
 
 export const DARK_TERMINAL_THEME = {
@@ -86,6 +90,44 @@ export function getTerminalTheme(terminalFollowTheme: boolean): typeof DARK_TERM
 }
 
 const cache = new Map<number, CachedEntry>();
+const readyMap = new Map<number, { promise: Promise<void>; resolve: () => void }>();
+
+function getOrCreateReadyEntry(ptyId: number) {
+  let entry = readyMap.get(ptyId);
+  if (!entry) {
+    let resolve: () => void;
+    const promise = new Promise<void>((r) => { resolve = r; });
+    entry = { promise, resolve: resolve! };
+    readyMap.set(ptyId, entry);
+  }
+  return entry;
+}
+
+/** 等待终端完成 attach + resize，超时 3 秒兜底 */
+export function waitForTerminalReady(ptyId: number): Promise<void> {
+  const { promise } = getOrCreateReadyEntry(ptyId);
+  return Promise.race([
+    promise,
+    new Promise<void>((r) => setTimeout(r, 3000)),
+  ]);
+}
+
+/** 终端 attach + resize 完成后调用 */
+export function signalTerminalReady(ptyId: number): void {
+  const entry = readyMap.get(ptyId);
+  if (entry) {
+    entry.resolve();
+    readyMap.delete(ptyId);
+  }
+}
+const enqueuePtyWrite = createPtyWriteQueue((ptyId, data) =>
+  invoke('write_pty', { ptyId, data })
+);
+
+function writePtyBinary(ptyId: number, data: string): Promise<void> {
+  const bytes = Array.from(data, (char) => char.charCodeAt(0) & 0xff);
+  return invoke('write_pty_binary', { ptyId, data: bytes });
+}
 
 export function getOrCreateTerminal(ptyId: number): CachedTerminal {
   const existing = cache.get(ptyId);
@@ -104,7 +146,7 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
     cursorBlink: true,
     cursorStyle: 'bar',
     cursorWidth: 2,
-    scrollback: 100000,
+    scrollback: 10000,
     letterSpacing: 0,
     lineHeight: 1.35,
     theme: getTerminalTheme(useAppStore.getState().config.terminalFollowTheme ?? true),
@@ -114,17 +156,24 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
   term.loadAddon(fitAddon);
   term.open(wrapper);
 
-  // WebGL 渲染，降级时回退到 Canvas
+  // WebGL 渲染器，比 DOM 渲染器快数倍；失败时自动降级
   try {
     const webgl = new WebglAddon();
-    webgl.onContextLoss(() => {
-      webgl.dispose();
-      term.refresh(0, term.rows - 1);
-    });
+    webgl.onContextLoss(() => webgl.dispose());
     term.loadAddon(webgl);
   } catch {
-    // WebGL 不支持
+    // WebGL 不可用，使用默认 DOM 渲染器
   }
+
+  // Some TUIs (notably Codex) rely heavily on DECSET 2026 synchronized output.
+  // In the embedded terminal this can leave the renderer stuck in a degraded
+  // state, so we ignore that mode and prefer immediate rendering.
+  const syncOnDisp = term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
+    return params.length > 0 && params[0] === 2026;
+  });
+  const syncOffDisp = term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (params) => {
+    return params.length > 0 && params[0] === 2026;
+  });
 
   // 剪贴板快捷键
   term.attachCustomKeyEventHandler((e) => {
@@ -138,7 +187,7 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
     if (e.ctrlKey && e.shiftKey && e.code === 'KeyV') {
       e.preventDefault();
       readText().then((text) => {
-        if (text) invoke('write_pty', { ptyId, data: text });
+        if (text) void enqueuePtyWrite(ptyId, text);
       });
       return false;
     }
@@ -148,7 +197,10 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
   // 用户输入 → PTY
   const onDataDisp = term.onData((data) => {
     term.scrollToBottom();
-    invoke('write_pty', { ptyId, data });
+    void enqueuePtyWrite(ptyId, data);
+  });
+  const onBinaryDisp = term.onBinary((data) => {
+    void writePtyBinary(ptyId, data);
   });
 
   // 终端 resize → 同步到 PTY
@@ -156,27 +208,23 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
     invoke('resize_pty', { ptyId, cols, rows });
   });
 
-  // PTY 输出 → 终端
-  let cancelled = false;
-  let unlisten: (() => void) | undefined;
-  listen<PtyOutputPayload>('pty-output', (event) => {
-    if (event.payload.ptyId === ptyId) {
-      term.write(event.payload.data);
-    }
-  }).then((fn) => {
-    if (cancelled) fn();
-    else unlisten = fn;
-  });
-
   const cleanup = () => {
-    cancelled = true;
-    unlisten?.();
+    entry.unlisten?.();
     onDataDisp.dispose();
+    onBinaryDisp.dispose();
     onResizeDisp.dispose();
+    syncOnDisp.dispose();
+    syncOffDisp.dispose();
     term.dispose();
   };
 
-  const entry: CachedEntry = { term, fitAddon, wrapper, cleanup };
+  const entry: CachedEntry = {
+    term,
+    fitAddon,
+    wrapper,
+    cleanup,
+    attached: false,
+  };
   cache.set(ptyId, entry);
   return entry;
 }
@@ -184,6 +232,38 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
 /** 获取已缓存的终端（不创建新的） */
 export function getCachedTerminal(ptyId: number): CachedTerminal | undefined {
   return cache.get(ptyId);
+}
+
+export async function ensurePtyOutputAttached(ptyId: number): Promise<void> {
+  const entry = cache.get(ptyId);
+  if (!entry) return;
+  if (entry.attached) return;
+  if (entry.attachPromise) return entry.attachPromise;
+
+  entry.attachPromise = (async () => {
+    const unlisten = await listen<PtyOutputPayload>('pty-output', (event) => {
+      if (event.payload.ptyId === ptyId) {
+        entry.term.write(event.payload.data);
+      }
+    });
+
+    try {
+      entry.unlisten = unlisten;
+      const backlog = await invoke<string>('attach_pty_output', { ptyId });
+      if (backlog) {
+        entry.term.write(backlog);
+      }
+      entry.attached = true;
+    } catch (error) {
+      unlisten();
+      entry.unlisten = undefined;
+      throw error;
+    } finally {
+      entry.attachPromise = undefined;
+    }
+  })();
+
+  return entry.attachPromise;
 }
 
 /** 彻底销毁终端（面板关闭 / kill_pty 后调用） */
@@ -200,4 +280,8 @@ export function updateAllTerminalThemes(terminalFollowTheme: boolean): void {
   for (const entry of cache.values()) {
     entry.term.options.theme = theme;
   }
+}
+
+export function writePtyInput(ptyId: number, data: string): Promise<void> {
+  return enqueuePtyWrite(ptyId, data);
 }

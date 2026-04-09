@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.png" width="128" height="128" alt="Mini-Term Logo">
+  <img src="src-tauri/icons/icon.png" width="128" height="128" alt="TermNest Logo">
 </p>
 
-<h1 align="center">Mini-Term</h1>
+<h1 align="center">TermNest</h1>
 
 <p align="center">
   <strong>为 AI 时代打造的桌面终端管理器</strong><br>
@@ -25,7 +25,7 @@
 2. **多 Agent 并发无感知** — 同时开多个 Claude / Codex 会话，某个 Agent 跑完了无法直观看到
 3. **项目切换不便** — 系统终端缺少多项目组织、标签页和分屏管理能力
 
-Mini-Term 用一个轻量桌面应用解决以上所有问题。
+TermNest 用一个轻量桌面应用解决以上所有问题。
 
 ## 预览
 
@@ -102,7 +102,7 @@ Mini-Term 用一个轻量桌面应用解决以上所有问题。
 
 ### 直接下载
 
-前往 [Releases](https://github.com/pchaganti/mini-term/releases) 页面下载最新安装包。
+前往 [Releases](https://github.com/flowxai/termnest/releases) 页面下载最新安装包。
 
 > 目前仅支持 Windows、MacOS 平台。
 
@@ -118,8 +118,8 @@ Mini-Term 用一个轻量桌面应用解决以上所有问题。
 
 ```bash
 # 克隆仓库
-git clone https://github.com/pchaganti/mini-term.git
-cd mini-term
+git clone https://github.com/flowxai/termnest.git
+cd termnest
 
 # 安装依赖
 npm install

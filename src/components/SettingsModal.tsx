@@ -6,7 +6,7 @@ import { useAppStore } from '../store';
 import { checkForUpdate, compareVersions, type ReleaseInfo } from '../utils/updateChecker';
 import { applyTheme } from '../utils/themeManager';
 import { updateAllTerminalThemes } from '../utils/terminalCache';
-import type { ShellConfig } from '../types';
+import type { ProxyConfig, ShellConfig } from '../types';
 
 interface Props {
   open: boolean;
@@ -340,6 +340,18 @@ function SystemSettings() {
     invoke('save_config', { config: newConfig });
   }, [setConfig]);
 
+  const handleProxyChange = useCallback((updates: Partial<ProxyConfig>) => {
+    const newConfig = {
+      ...useAppStore.getState().config,
+      proxy: {
+        ...useAppStore.getState().config.proxy,
+        ...updates,
+      },
+    };
+    setConfig(newConfig);
+    invoke('save_config', { config: newConfig });
+  }, [setConfig]);
+
   return (
     <div className="space-y-6">
       {/* 主题模式 */}
@@ -410,6 +422,50 @@ function SystemSettings() {
       <div className="pt-3 text-sm text-[var(--text-muted)]">
         界面字体影响侧栏、标签页等 UI 元素 · 终端字体影响终端内文字显示
       </div>
+
+      <div className="text-base text-[var(--text-muted)] uppercase tracking-[0.1em] mb-2">
+        全局代理
+      </div>
+
+      <div className="flex items-center justify-between px-3 py-2.5 rounded-[var(--radius-md)] bg-[var(--bg-base)] border border-[var(--border-subtle)]">
+        <div>
+          <div className="text-base text-[var(--text-primary)]">TermNest 默认代理</div>
+          <div className="text-sm text-[var(--text-muted)]">只影响 TermNest 内新开的终端</div>
+        </div>
+        <button
+          className={`relative w-9 h-5 rounded-full transition-colors ${
+            config.proxy?.enabled ? 'bg-[var(--accent)]' : 'bg-[var(--border-strong)]'
+          }`}
+          onClick={() => handleProxyChange({ enabled: !config.proxy?.enabled })}
+        >
+          <span
+            className={`absolute top-0.5 left-0 w-4 h-4 rounded-full bg-white transition-transform ${
+              config.proxy?.enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+            }`}
+          />
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        <input
+          className="w-full bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border-default)] rounded-[var(--radius-sm)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] font-mono"
+          placeholder="ALL_PROXY，例如 socks5://127.0.0.1:7897"
+          value={config.proxy?.allProxy ?? ''}
+          onChange={(e) => handleProxyChange({ allProxy: e.target.value })}
+        />
+        <input
+          className="w-full bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border-default)] rounded-[var(--radius-sm)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] font-mono"
+          placeholder="HTTP_PROXY，例如 http://127.0.0.1:7897"
+          value={config.proxy?.httpProxy ?? ''}
+          onChange={(e) => handleProxyChange({ httpProxy: e.target.value })}
+        />
+        <input
+          className="w-full bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border-default)] rounded-[var(--radius-sm)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] font-mono"
+          placeholder="HTTPS_PROXY，例如 http://127.0.0.1:7897"
+          value={config.proxy?.httpsProxy ?? ''}
+          onChange={(e) => handleProxyChange({ httpsProxy: e.target.value })}
+        />
+      </div>
     </div>
   );
 }
@@ -456,7 +512,11 @@ function AboutSettings() {
       {/* 当前版本 */}
       <div className="flex items-center gap-3 px-4 py-3 rounded-[var(--radius-md)] bg-[var(--bg-base)] border border-[var(--border-subtle)]">
         <span className="text-base text-[var(--text-secondary)]">当前版本</span>
-        <span className="font-mono text-base text-[var(--accent)]">v{currentVersion}</span>
+        <span
+          className="font-mono text-base text-[var(--accent)] cursor-pointer hover:underline"
+          onClick={() => import('@tauri-apps/plugin-opener').then((m) => m.openUrl(`https://github.com/flowxai/termnest/releases/tag/v${currentVersion}`))}
+          title="前往 GitHub 查看此版本"
+        >v{currentVersion}</span>
       </div>
 
       {/* 检查更新按钮 */}

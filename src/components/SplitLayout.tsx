@@ -4,10 +4,11 @@ import { PaneGroup } from './PaneGroup';
 import type { SplitNode } from '../types';
 
 interface Props {
+  tabId: string;
   node: SplitNode;
   projectPath: string;
   onSplit?: (paneId: string, direction: 'horizontal' | 'vertical') => void;
-  onCloseLeaf?: (node: SplitNode) => void;
+  onCloseLeaf?: (tabId: string, node: SplitNode) => void;
   onUpdateNode?: (updated: SplitNode) => void;
   onLayoutChange?: (updatedNode: SplitNode) => void;
 }
@@ -19,21 +20,21 @@ function getNodeKey(node: SplitNode): string {
   return node.children.map(getNodeKey).join('-');
 }
 
-export function SplitLayout({ node, projectPath, onSplit, onCloseLeaf, onUpdateNode, onLayoutChange }: Props) {
+export function SplitLayout({ tabId, node, projectPath, onSplit, onCloseLeaf, onUpdateNode, onLayoutChange }: Props) {
   const rafRef = useRef<number>(0);
   const nodeRef = useRef(node);
   nodeRef.current = node;
 
   if (node.type === 'leaf') {
     return (
-      <PaneGroup
-        node={node}
-        projectPath={projectPath}
-        onSplit={onSplit ?? (() => {})}
-        onClosePane={() => onCloseLeaf?.(node)}
-        onUpdateNode={(updated) => onUpdateNode?.(updated)}
-      />
-    );
+        <PaneGroup
+          node={node}
+          projectPath={projectPath}
+          onSplit={onSplit ?? (() => {})}
+          onClosePane={() => onCloseLeaf?.(tabId, node)}
+          onUpdateNode={(updated) => onUpdateNode?.(updated)}
+        />
+      );
   }
 
   const handleSizesChange = (sizes: number[]) => {
@@ -62,7 +63,7 @@ export function SplitLayout({ node, projectPath, onSplit, onCloseLeaf, onUpdateN
     if (currentNode.type !== 'split') return;
     const remaining = currentNode.children.filter((_, i) => i !== index);
     if (remaining.length === 0) {
-      onCloseLeaf?.(currentNode);
+      onCloseLeaf?.(tabId, currentNode);
     } else if (remaining.length === 1) {
       onUpdateNode?.(remaining[0]);
     } else {
@@ -91,6 +92,7 @@ export function SplitLayout({ node, projectPath, onSplit, onCloseLeaf, onUpdateN
       {node.children.map((child, index) => (
         <Allotment.Pane key={getNodeKey(child)}>
           <SplitLayout
+            tabId={tabId}
             node={child}
             projectPath={projectPath}
             onSplit={onSplit}

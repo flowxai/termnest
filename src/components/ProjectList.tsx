@@ -59,12 +59,22 @@ export function ProjectList() {
   const orderedItems = getOrderedTree(config);
   const allGroups = collectAllGroups(config.projectTree ?? []);
 
+  const updateProjectConfig = useCallback((projectId: string, updater: (project: ProjectConfig) => ProjectConfig) => {
+    const current = useAppStore.getState().config;
+    const nextConfig = {
+      ...current,
+      projects: current.projects.map((project) => project.id === projectId ? updater(project) : project),
+    };
+    useAppStore.getState().setConfig(nextConfig);
+    invoke('save_config', { config: nextConfig });
+  }, []);
+
   const handleAddProject = useCallback(async () => {
     const selected = await open({ directory: true, multiple: false });
     if (!selected) return;
     const path = selected as string;
     const name = path.split(/[/\\]/).pop() || path;
-    addProject({ id: genId(), name, path });
+    addProject({ id: genId(), name, path, proxyMode: 'inherit' });
     saveConfig();
   }, [addProject]);
 
@@ -294,6 +304,40 @@ export function ProjectList() {
             { label: '重命名', onClick: () => startRenameProject(project.id, project.name) },
             { label: '在文件夹中打开', onClick: () => revealItemInDir(project.path) },
             { label: '复制绝对路径', onClick: () => navigator.clipboard.writeText(project.path) },
+            { separator: true },
+            {
+              label: '代理：继承全局',
+              onClick: () => updateProjectConfig(project.id, (target) => ({ ...target, proxyMode: 'inherit', proxyOverride: undefined })),
+            },
+            {
+              label: '代理：启用',
+              onClick: () => updateProjectConfig(project.id, (target) => ({ ...target, proxyMode: 'enabled' })),
+            },
+            {
+              label: '代理：禁用',
+              onClick: () => updateProjectConfig(project.id, (target) => ({ ...target, proxyMode: 'disabled', proxyOverride: undefined })),
+            },
+            {
+              label: '设置项目代理覆盖',
+              onClick: async () => {
+                const currentProject = useAppStore.getState().config.projects.find((item) => item.id === project.id);
+                const allProxy = await showPrompt('项目 ALL_PROXY', '留空表示沿用全局值', currentProject?.proxyOverride?.allProxy);
+                if (allProxy === null) return;
+                const httpProxy = await showPrompt('项目 HTTP_PROXY', '留空表示沿用全局值', currentProject?.proxyOverride?.httpProxy);
+                if (httpProxy === null) return;
+                const httpsProxy = await showPrompt('项目 HTTPS_PROXY', '留空表示沿用全局值', currentProject?.proxyOverride?.httpsProxy);
+                if (httpsProxy === null) return;
+                updateProjectConfig(project.id, (target) => ({
+                  ...target,
+                  proxyMode: 'enabled',
+                  proxyOverride: {
+                    allProxy: allProxy.trim(),
+                    httpProxy: httpProxy.trim(),
+                    httpsProxy: httpsProxy.trim(),
+                  },
+                }));
+              },
+            },
           ];
           // 添加分组相关菜单
           if (allGroups.length > 0) {

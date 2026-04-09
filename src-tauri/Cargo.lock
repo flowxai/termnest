@@ -4263,27 +4263,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-app"
-version = "0.2.5"
-dependencies = [
- "dirs",
- "git2",
- "ignore",
- "notify",
- "pathdiff",
- "portable-pty",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-window-state",
- "windows 0.58.0",
-]
-
-[[package]]
 name = "tauri-build"
 version = "2.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4596,6 +4575,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5d9cf598a6d7ce700a4e6a9199da127e6819a61e64b68609683cc9a01b5683a"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "termnest"
+version = "1.0.9"
+dependencies = [
+ "dirs",
+ "git2",
+ "ignore",
+ "notify",
+ "pathdiff",
+ "portable-pty",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-window-state",
+ "windows 0.58.0",
 ]
 
 [[package]]

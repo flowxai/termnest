@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store';
-import { getOrCreateTerminal, getCachedTerminal, getTerminalTheme, DARK_TERMINAL_THEME } from '../utils/terminalCache';
+import { getOrCreateTerminal, getCachedTerminal, getTerminalTheme, DARK_TERMINAL_THEME, writePtyInput, ensurePtyOutputAttached, signalTerminalReady } from '../utils/terminalCache';
 import { getResolvedTheme } from '../utils/themeManager';
 import '@xterm/xterm/css/xterm.css';
 
@@ -27,13 +27,18 @@ export function TerminalInstance({ ptyId }: Props) {
 
     container.appendChild(wrapper);
 
-    requestAnimationFrame(() => {
+    // 先 attach 输出，再 resize 到实际尺寸，最后 signal ready
+    // 保证恢复命令在正确尺寸下才发送
+    (async () => {
+      await ensurePtyOutputAttached(ptyId);
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
       if (container.clientWidth > 0 && container.clientHeight > 0) {
         fitAddon.fit();
-        invoke('resize_pty', { ptyId, cols: term.cols, rows: term.rows });
+        await invoke('resize_pty', { ptyId, cols: term.cols, rows: term.rows });
         term.refresh(0, term.rows - 1);
       }
-    });
+      signalTerminalReady(ptyId);
+    })();
 
     let rafId: number;
     const observer = new ResizeObserver(() => {
@@ -46,17 +51,9 @@ export function TerminalInstance({ ptyId }: Props) {
     });
     observer.observe(container);
 
-    const visibilityObserver = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) {
-        requestAnimationFrame(() => fitAddon.fit());
-      }
-    });
-    visibilityObserver.observe(container);
-
     return () => {
       cancelAnimationFrame(rafId);
       observer.disconnect();
-      visibilityObserver.disconnect();
       wrapper.remove();
     };
   }, [ptyId]);
@@ -97,7 +94,7 @@ export function TerminalInstance({ ptyId }: Props) {
     setFileDrag(false);
     const filePath = e.dataTransfer.getData('text/plain').trim();
     if (filePath) {
-      invoke('write_pty', { ptyId, data: filePath });
+      void writePtyInput(ptyId, filePath);
       getCachedTerminal(ptyId)?.term.focus();
     }
   };
@@ -111,7 +108,7 @@ export function TerminalInstance({ ptyId }: Props) {
         onDragLeaveCapture={handleDragLeave}
         onDropCapture={handleDrop}
       >
-        <div ref={containerRef} className="absolute top-1.5 bottom-0 left-2.5 right-0 cursor-none" />
+        <div ref={containerRef} className="absolute inset-0" />
 
         {fileDrag && (
           <div

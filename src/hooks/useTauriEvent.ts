@@ -6,12 +6,15 @@ export function useTauriEvent<T>(event: string, handler: (payload: T) => void) {
   handlerRef.current = handler;
 
   useEffect(() => {
-    let unlisten: UnlistenFn | undefined;
+    let unlistenFn: UnlistenFn | undefined;
+    let cancelled = false;
     listen<T>(event, (e) => handlerRef.current(e.payload)).then((fn) => {
-      unlisten = fn;
+      if (cancelled) { fn(); return; }
+      unlistenFn = fn;
     });
     return () => {
-      unlisten?.();
+      cancelled = true;
+      unlistenFn?.();
     };
   }, [event]);
 }

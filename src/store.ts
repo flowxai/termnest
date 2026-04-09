@@ -5,6 +5,9 @@ import type {
   ProjectConfig,
   ProjectGroup,
   ProjectState,
+  WorkspaceState,
+  EditorDocumentState,
+  EditorMode,
   TerminalTab,
   SplitNode,
   PaneState,
@@ -13,6 +16,8 @@ import type {
   SavedSplitNode,
   SavedTab,
   SavedProjectLayout,
+  AppNotification,
+  NotificationKind,
 } from './types';
 import {
   deepCloneTree,
@@ -27,6 +32,23 @@ import {
 // 生成唯一 ID
 let idCounter = 0;
 export const genId = () => `id-${Date.now()}-${++idCounter}`;
+
+// waitForTerminalMount removed — replaced by waitForTerminalReady in terminalCache
+
+function toErrorMessage(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function notify(title: string, message: string, kind: NotificationKind = 'error') {
+  useAppStore.getState().pushNotification({
+    id: genId(),
+    title,
+    message,
+    kind,
+  });
+}
 
 // 计算 Tab 聚合状态
 const STATUS_PRIORITY: Record<PaneStatus, number> = {
@@ -69,6 +91,90 @@ function updatePaneStatus(node: SplitNode, ptyId: number, status: PaneStatus): S
 export function collectPtyIds(node: SplitNode): number[] {
   if (node.type === 'leaf') return node.panes.map((p) => p.ptyId);
   return node.children.flatMap(collectPtyIds);
+}
+
+export async function createTerminalTab(
+  projectId: string,
+  projectPath: string,
+  options?: {
+    shellName?: string;
+    initialCommand?: string;
+    customTitle?: string;
+  },
+): Promise<number | null> {
+  const { config, addTab } = useAppStore.getState();
+  const shell = (options?.shellName
+    ? config.availableShells.find((s) => s.name === options.shellName)
+    : undefined)
+    ?? config.availableShells.find((s) => s.name === config.defaultShell)
+    ?? config.availableShells[0];
+  if (!shell) {
+    notify('无法新建终端', '请先在设置中配置至少一个可用的 shell。');
+    return null;
+  }
+
+  let ptyId: number;
+  try {
+    ptyId = await invoke<number>('create_pty', {
+      shell: shell.command,
+      args: shell.args ?? [],
+      cwd: projectPath,
+    });
+  } catch (error) {
+    notify('终端启动失败', toErrorMessage(error));
+    return null;
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const { getOrCreateTerminal } = await import('./utils/terminalCache');
+      getOrCreateTerminal(ptyId);
+    } catch {
+      // TerminalInstance 挂载时会兜底创建；这里预热只是为了尽早接住启动输出。
+    }
+  }
+
+  const paneId = genId();
+  const tabId = genId();
+
+  const tab: TerminalTab = {
+    id: tabId,
+    customTitle: options?.customTitle,
+    status: 'idle',
+    splitLayout: {
+      type: 'leaf',
+      panes: [{
+        id: paneId,
+        shellName: shell.name,
+        status: 'idle',
+        ptyId,
+      }],
+      activePaneId: paneId,
+    },
+  };
+
+  addTab(projectId, tab);
+  saveLayoutToConfig(projectId);
+
+  if (options?.initialCommand) {
+    try {
+      const { waitForTerminalReady } = await import('./utils/terminalCache');
+      await waitForTerminalReady(ptyId);
+      await invoke('write_pty', { ptyId, data: `${options.initialCommand}\n` });
+    } catch (error) {
+      notify('终端命令发送失败', toErrorMessage(error), 'warning');
+    }
+  }
+
+  return ptyId;
+}
+
+export function countDirtyEditors(): number {
+  let count = 0;
+  for (const workspace of useAppStore.getState().workspaceStates.values()) {
+    count += workspace.openEditors.filter((editor) => editor.dirty).length;
+  }
+  return count;
 }
 
 // 序列化 SplitNode 树（剥离运行时数据）
@@ -296,6 +402,8 @@ interface AppStore {
   // 项目
   activeProjectId: string | null;
   projectStates: Map<string, ProjectState>;
+  workspaceStates: Map<string, WorkspaceState>;
+  notifications: AppNotification[];
   setActiveProject: (id: string) => void;
   addProject: (project: ProjectConfig) => void;
   removeProject: (id: string) => void;
@@ -310,12 +418,25 @@ interface AppStore {
   // Pane 状态
   updatePaneStatusByPty: (ptyId: number, status: PaneStatus) => void;
 
+  // 编辑器工作区
+  openEditor: (projectId: string, path: string, name: string) => void;
+  closeEditor: (projectId: string, path: string) => void;
+  setActiveEditor: (projectId: string, path: string | null) => void;
+  setEditorMode: (projectId: string, mode: EditorMode) => void;
+  setEditorLoaded: (projectId: string, editor: EditorDocumentState) => void;
+  updateEditorDraft: (projectId: string, path: string, content: string) => void;
+  markEditorSaved: (projectId: string, path: string, content: string, modifiedMs: number) => void;
+  markEditorExternalChange: (projectId: string, path: string, modifiedMs: number) => void;
+  clearEditorExternalChange: (projectId: string, path: string) => void;
+
   // 分组
   createGroup: (name: string, parentGroupId?: string) => void;
   removeGroup: (groupId: string) => void;
   renameGroup: (groupId: string, name: string) => void;
   toggleGroupCollapse: (groupId: string) => void;
   moveItem: (itemId: string, targetGroupId: string | null, index?: number) => void;
+  pushNotification: (notification: AppNotification) => void;
+  dismissNotification: (id: string) => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -327,11 +448,21 @@ export const useAppStore = create<AppStore>((set) => ({
     terminalFontSize: 14,
     theme: 'auto',
     terminalFollowTheme: true,
+    proxy: {
+      enabled: false,
+      allProxy: '',
+      httpProxy: '',
+      httpsProxy: '',
+    },
+    sessionAliases: {},
+    sessionPins: {},
   },
   setConfig: (config) => set({ config }),
 
   activeProjectId: null,
   projectStates: new Map(),
+  workspaceStates: new Map(),
+  notifications: [],
 
   setActiveProject: (id) => set({ activeProjectId: id }),
 
@@ -346,9 +477,17 @@ export const useAppStore = create<AppStore>((set) => ({
       };
       const newStates = new Map(state.projectStates);
       newStates.set(project.id, { id: project.id, tabs: [], activeTabId: '' });
+      const newWorkspaces = new Map(state.workspaceStates);
+      newWorkspaces.set(project.id, {
+        projectId: project.id,
+        openEditors: [],
+        activeEditorPath: null,
+        editorMode: 'split',
+      });
       return {
         config: newConfig,
         projectStates: newStates,
+        workspaceStates: newWorkspaces,
         activeProjectId: state.activeProjectId ?? project.id,
       };
     }),
@@ -368,11 +507,13 @@ export const useAppStore = create<AppStore>((set) => ({
       };
       const newStates = new Map(state.projectStates);
       newStates.delete(id);
+      const newWorkspaces = new Map(state.workspaceStates);
+      newWorkspaces.delete(id);
       const newActive =
         state.activeProjectId === id
           ? newConfig.projects[0]?.id ?? null
           : state.activeProjectId;
-      return { config: newConfig, projectStates: newStates, activeProjectId: newActive };
+      return { config: newConfig, projectStates: newStates, workspaceStates: newWorkspaces, activeProjectId: newActive };
     }),
 
   renameProject: (id, name) =>
@@ -463,6 +604,158 @@ export const useAppStore = create<AppStore>((set) => ({
       return changed ? { projectStates: newStates } : state;
     }),
 
+  openEditor: (projectId, path, name) =>
+    set((state) => {
+      const workspaces = new Map(state.workspaceStates);
+      const workspace = workspaces.get(projectId) ?? {
+        projectId,
+        openEditors: [],
+        activeEditorPath: null,
+        editorMode: 'split' as EditorMode,
+      };
+      if (workspace.openEditors.some((editor) => editor.path === path)) {
+        workspaces.set(projectId, { ...workspace, activeEditorPath: path });
+        return { workspaceStates: workspaces };
+      }
+
+      const editor: EditorDocumentState = {
+        path,
+        name,
+        draftContent: '',
+        savedContent: '',
+        dirty: false,
+        loading: true,
+        isBinary: false,
+        tooLarge: false,
+        externallyModified: false,
+      };
+      workspaces.set(projectId, {
+        ...workspace,
+        openEditors: [...workspace.openEditors, editor],
+        activeEditorPath: path,
+      });
+      return { workspaceStates: workspaces };
+    }),
+
+  closeEditor: (projectId, path) =>
+    set((state) => {
+      const workspaces = new Map(state.workspaceStates);
+      const workspace = workspaces.get(projectId);
+      if (!workspace) return state;
+      const remaining = workspace.openEditors.filter((editor) => editor.path !== path);
+      let activeEditorPath = workspace.activeEditorPath;
+      if (activeEditorPath === path) {
+        activeEditorPath = remaining[remaining.length - 1]?.path ?? remaining[0]?.path ?? null;
+      }
+      workspaces.set(projectId, { ...workspace, openEditors: remaining, activeEditorPath });
+      return { workspaceStates: workspaces };
+    }),
+
+  setActiveEditor: (projectId, path) =>
+    set((state) => {
+      const workspaces = new Map(state.workspaceStates);
+      const workspace = workspaces.get(projectId);
+      if (!workspace) return state;
+      workspaces.set(projectId, { ...workspace, activeEditorPath: path });
+      return { workspaceStates: workspaces };
+    }),
+
+  setEditorMode: (projectId, mode) =>
+    set((state) => {
+      const workspaces = new Map(state.workspaceStates);
+      const workspace = workspaces.get(projectId) ?? {
+        projectId,
+        openEditors: [],
+        activeEditorPath: null,
+        editorMode: 'split' as EditorMode,
+      };
+      workspaces.set(projectId, { ...workspace, editorMode: mode });
+      return { workspaceStates: workspaces };
+    }),
+
+  setEditorLoaded: (projectId, editor) =>
+    set((state) => {
+      const workspaces = new Map(state.workspaceStates);
+      const workspace = workspaces.get(projectId);
+      if (!workspace) return state;
+      const exists = workspace.openEditors.some((item) => item.path === editor.path);
+      if (!exists) return state;
+      workspaces.set(projectId, {
+        ...workspace,
+        openEditors: workspace.openEditors.map((item) => item.path === editor.path ? editor : item),
+      });
+      return { workspaceStates: workspaces };
+    }),
+
+  updateEditorDraft: (projectId, path, content) =>
+    set((state) => {
+      const workspaces = new Map(state.workspaceStates);
+      const workspace = workspaces.get(projectId);
+      if (!workspace) return state;
+      workspaces.set(projectId, {
+        ...workspace,
+        openEditors: workspace.openEditors.map((editor) =>
+          editor.path === path
+            ? { ...editor, draftContent: content, dirty: content !== editor.savedContent }
+            : editor
+        ),
+      });
+      return { workspaceStates: workspaces };
+    }),
+
+  markEditorSaved: (projectId, path, content, modifiedMs) =>
+    set((state) => {
+      const workspaces = new Map(state.workspaceStates);
+      const workspace = workspaces.get(projectId);
+      if (!workspace) return state;
+      workspaces.set(projectId, {
+        ...workspace,
+        openEditors: workspace.openEditors.map((editor) =>
+          editor.path === path
+            ? {
+              ...editor,
+              draftContent: content,
+              savedContent: content,
+              dirty: false,
+              externallyModified: false,
+              lastKnownModifiedMs: modifiedMs,
+            }
+            : editor
+        ),
+      });
+      return { workspaceStates: workspaces };
+    }),
+
+  markEditorExternalChange: (projectId, path, _modifiedMs) =>
+    set((state) => {
+      const workspaces = new Map(state.workspaceStates);
+      const workspace = workspaces.get(projectId);
+      if (!workspace) return state;
+      workspaces.set(projectId, {
+        ...workspace,
+        openEditors: workspace.openEditors.map((editor) =>
+          editor.path === path
+            ? { ...editor, externallyModified: true }
+            : editor
+        ),
+      });
+      return { workspaceStates: workspaces };
+    }),
+
+  clearEditorExternalChange: (projectId, path) =>
+    set((state) => {
+      const workspaces = new Map(state.workspaceStates);
+      const workspace = workspaces.get(projectId);
+      if (!workspace) return state;
+      workspaces.set(projectId, {
+        ...workspace,
+        openEditors: workspace.openEditors.map((editor) =>
+          editor.path === path ? { ...editor, externallyModified: false } : editor
+        ),
+      });
+      return { workspaceStates: workspaces };
+    }),
+
   createGroup: (name, parentGroupId) =>
     set((state) => {
       const config = ensureTree(state.config);
@@ -502,5 +795,15 @@ export const useAppStore = create<AppStore>((set) => ({
       insertIntoTree(newTree, targetGroupId, removed, index);
       return { config: { ...config, projectTree: newTree } };
     }),
+
+  pushNotification: (notification) =>
+    set((state) => ({
+      notifications: [...state.notifications, notification],
+    })),
+
+  dismissNotification: (id) =>
+    set((state) => ({
+      notifications: state.notifications.filter((item) => item.id !== id),
+    })),
 
 }));

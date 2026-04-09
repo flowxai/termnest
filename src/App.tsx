@@ -5,12 +5,13 @@ import { getVersion } from '@tauri-apps/api/app';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ask } from '@tauri-apps/plugin-dialog';
-import { useAppStore, restoreLayout, flushLayoutToConfig, initExpandedDirs, flushExpandedDirsToConfig, persistConfig } from './store';
-import { TerminalArea } from './components/TerminalArea';
+import { useAppStore, restoreLayout, flushLayoutToConfig, initExpandedDirs, flushExpandedDirsToConfig, persistConfig, countDirtyEditors } from './store';
 import { ProjectList } from './components/ProjectList';
 import { FileTree } from './components/FileTree';
 import { GitHistory } from './components/GitHistory';
 import { SettingsModal } from './components/SettingsModal';
+import { WorkspaceArea } from './components/WorkspaceArea';
+import { NotificationCenter } from './components/NotificationCenter';
 import { useTauriEvent } from './hooks/useTauriEvent';
 import { checkForUpdate, type ReleaseInfo } from './utils/updateChecker';
 import { applyTheme } from './utils/themeManager';
@@ -40,8 +41,18 @@ export function App() {
           newStates.set(p.id, { id: p.id, tabs: [], activeTabId: '' });
         }
       }
+      const workspaceStates = new Map<string, import('./types').WorkspaceState>();
+      for (const p of cfg.projects) {
+        workspaceStates.set(p.id, {
+          projectId: p.id,
+          openEditors: [],
+          activeEditorPath: null,
+          editorMode: 'split',
+        });
+      }
       useAppStore.setState({
         projectStates: newStates,
+        workspaceStates,
         activeProjectId: cfg.projects[0]?.id ?? null,
       });
 
@@ -92,7 +103,11 @@ export function App() {
     const appWindow = getCurrentWindow();
     const unlisten = appWindow.onCloseRequested(async (event) => {
       event.preventDefault();
-      const confirmed = await ask('确定要关闭 Mini-Term 吗？', { title: '关闭确认', kind: 'warning' });
+      const dirtyEditors = countDirtyEditors();
+      const closeMessage = dirtyEditors > 0
+        ? `当前有 ${dirtyEditors} 个未保存文件，确定要关闭 TermNest 吗？`
+        : '确定要关闭 TermNest 吗？';
+      const confirmed = await ask(closeMessage, { title: '关闭确认', kind: 'warning' });
       if (!confirmed) return;
       const { projectStates } = useAppStore.getState();
       for (const projectId of projectStates.keys()) {
@@ -145,10 +160,15 @@ export function App() {
       <div className="flex items-center gap-4 px-4 py-2 bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-xs select-none"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <span className="font-semibold tracking-wide text-[var(--accent)] text-sm" style={{ fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.05em' }}>
-          MINI-TERM
+          TERMNEST
         </span>
         {currentVersion && (
-          <span className="text-[10px] text-[var(--text-muted)] font-mono">v{currentVersion}</span>
+          <span
+            className="text-[10px] text-[var(--text-muted)] font-mono cursor-pointer hover:text-[var(--accent)] transition-colors"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            onClick={() => openUrl(`https://github.com/flowxai/termnest/releases/tag/v${currentVersion}`)}
+            title="前往 GitHub 查看此版本"
+          >v{currentVersion}</span>
         )}
         {updateInfo && (
           <span
@@ -199,7 +219,7 @@ export function App() {
                   className="absolute inset-0"
                   style={{ display: project.id === activeProjectId ? 'block' : 'none' }}
                 >
-                  <TerminalArea projectId={project.id} projectPath={project.path} />
+                  <WorkspaceArea projectId={project.id} projectPath={project.path} />
                 </div>
               ))}
               {config.projects.length === 0 && (
@@ -211,6 +231,7 @@ export function App() {
           </Allotment.Pane>
         </Allotment> : null}
       </div>
+      <NotificationCenter />
       <SettingsModal open={configOpen} onClose={() => setConfigOpen(false)} />
     </div>
   );

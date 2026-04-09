@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
@@ -53,6 +54,12 @@ pub struct AppConfig {
     pub theme: String,
     #[serde(default = "default_terminal_follow_theme")]
     pub terminal_follow_theme: bool,
+    #[serde(default)]
+    pub proxy: ProxyConfig,
+    #[serde(default)]
+    pub session_aliases: HashMap<String, HashMap<String, String>>,
+    #[serde(default)]
+    pub session_pins: HashMap<String, HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +111,10 @@ pub struct ProjectConfig {
     pub saved_layout: Option<SavedProjectLayout>,
     #[serde(default)]
     pub expanded_dirs: Vec<String>,
+    #[serde(default = "default_project_proxy_mode")]
+    pub proxy_mode: ProjectProxyMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_override: Option<ProxyOverrideConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,10 +125,44 @@ pub struct ShellConfig {
     pub args: Option<Vec<String>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub all_proxy: String,
+    #[serde(default)]
+    pub http_proxy: String,
+    #[serde(default)]
+    pub https_proxy: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyOverrideConfig {
+    #[serde(default)]
+    pub all_proxy: String,
+    #[serde(default)]
+    pub http_proxy: String,
+    #[serde(default)]
+    pub https_proxy: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ProjectProxyMode {
+    #[default]
+    Inherit,
+    Enabled,
+    Disabled,
+}
+
 fn default_ui_font_size() -> f64 { 13.0 }
 fn default_terminal_font_size() -> f64 { 14.0 }
 fn default_theme() -> String { "auto".into() }
 fn default_terminal_follow_theme() -> bool { true }
+fn default_project_proxy_mode() -> ProjectProxyMode { ProjectProxyMode::Inherit }
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -134,6 +179,9 @@ impl Default for AppConfig {
             middle_column_sizes: None,
             theme: default_theme(),
             terminal_follow_theme: default_terminal_follow_theme(),
+            proxy: ProxyConfig::default(),
+            session_aliases: HashMap::new(),
+            session_pins: HashMap::new(),
         }
     }
 }
@@ -189,6 +237,44 @@ fn config_path(app: &AppHandle) -> PathBuf {
     dir.join("config.json")
 }
 
+fn legacy_config_paths(app: &AppHandle) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(parent) = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .and_then(|dir| dir.parent().map(|p| p.to_path_buf()))
+    {
+        paths.push(parent.join("com.tauri-app.tauri-app").join("config.json"));
+    }
+    paths
+}
+
+pub fn load_config_from_disk(app: &AppHandle) -> AppConfig {
+    let path = config_path(app);
+    if let Ok(content) = fs::read_to_string(&path) {
+        return migrate_config(serde_json::from_str(&content).unwrap_or_default());
+    }
+
+    for legacy_path in legacy_config_paths(app) {
+        if let Ok(content) = fs::read_to_string(&legacy_path) {
+            let config = migrate_config(serde_json::from_str(&content).unwrap_or_default());
+            let _ = save_migrated_config(&path, &config);
+            return config;
+        }
+    }
+
+    migrate_config(AppConfig::default())
+}
+
+fn save_migrated_config(path: &PathBuf, config: &AppConfig) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())
+}
+
 /// 将旧格式 `pane`（单个）迁移到新格式 `panes`（数组）
 fn normalize_split_node(node: &mut SavedSplitNode) {
     match node {
@@ -207,7 +293,29 @@ fn normalize_split_node(node: &mut SavedSplitNode) {
     }
 }
 
+fn ensure_shell_config(config: &mut AppConfig) {
+    if config.available_shells.is_empty() {
+        config.available_shells = default_shells();
+    }
+
+    let missing_default = config.default_shell.trim().is_empty()
+        || !config
+            .available_shells
+            .iter()
+            .any(|shell| shell.name == config.default_shell);
+
+    if missing_default {
+        config.default_shell = config
+            .available_shells
+            .first()
+            .map(|shell| shell.name.clone())
+            .unwrap_or_else(default_shell_name);
+    }
+}
+
 fn migrate_config(mut config: AppConfig) -> AppConfig {
+    ensure_shell_config(&mut config);
+
     // 迁移 SavedSplitNode: pane → panes
     for project in config.projects.iter_mut() {
         if let Some(layout) = project.saved_layout.as_mut() {
@@ -251,18 +359,14 @@ fn migrate_config(mut config: AppConfig) -> AppConfig {
 
 #[tauri::command]
 pub fn load_config(app: AppHandle) -> AppConfig {
-    let path = config_path(&app);
-    match fs::read_to_string(&path) {
-        Ok(content) => migrate_config(serde_json::from_str(&content).unwrap_or_default()),
-        Err(_) => migrate_config(AppConfig::default()),
-    }
+    load_config_from_disk(&app)
 }
 
 #[tauri::command]
 pub fn save_config(app: AppHandle, config: AppConfig) -> Result<(), String> {
     let path = config_path(&app);
-    let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    fs::write(&path, json).map_err(|e| e.to_string())
+    let normalized = migrate_config(config);
+    save_migrated_config(&path, &normalized)
 }
 
 #[cfg(test)]
@@ -296,6 +400,7 @@ mod tests {
         let config: AppConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.projects.len(), 1);
         assert!(config.projects[0].saved_layout.is_none());
+        assert_eq!(config.projects[0].proxy_mode, ProjectProxyMode::Inherit);
     }
 
     #[test]
@@ -311,6 +416,7 @@ mod tests {
         assert!(config.project_tree.is_none());
         assert!(config.project_groups.is_none());
         assert!(config.project_ordering.is_none());
+        assert!(!config.proxy.enabled);
     }
 
     #[test]
@@ -321,8 +427,8 @@ mod tests {
                 split_layout: SavedSplitNode::Split {
                     direction: "horizontal".into(),
                     children: vec![
-                        SavedSplitNode::Leaf { pane: SavedPane { shell_name: "cmd".into() } },
-                        SavedSplitNode::Leaf { pane: SavedPane { shell_name: "powershell".into() } },
+                        SavedSplitNode::Leaf { pane: Some(SavedPane { shell_name: "cmd".into() }), panes: vec![] },
+                        SavedSplitNode::Leaf { pane: Some(SavedPane { shell_name: "powershell".into() }), panes: vec![] },
                     ],
                     sizes: vec![50.0, 50.0],
                 },
@@ -356,6 +462,54 @@ mod tests {
         assert!(config.project_ordering.is_none());
         let tree = config.project_tree.unwrap();
         assert_eq!(tree.len(), 2);
+    }
+
+    #[test]
+    fn proxy_config_round_trip() {
+        let mut config = AppConfig::default();
+        config.proxy.enabled = true;
+        config.proxy.all_proxy = "socks5://127.0.0.1:7897".into();
+        config.projects.push(ProjectConfig {
+            id: "p1".into(),
+            name: "proj".into(),
+            path: "/tmp/proj".into(),
+            saved_layout: None,
+            expanded_dirs: vec![],
+            proxy_mode: ProjectProxyMode::Enabled,
+            proxy_override: Some(ProxyOverrideConfig {
+                all_proxy: "socks5://127.0.0.1:7898".into(),
+                http_proxy: String::new(),
+                https_proxy: String::new(),
+            }),
+        });
+        config.session_aliases.insert("/tmp/proj".into(), HashMap::from([
+            ("codex:abc".into(), "My Session".into()),
+        ]));
+        config.session_pins.insert("/tmp/proj".into(), HashMap::from([
+            ("codex:abc".into(), true),
+        ]));
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: AppConfig = serde_json::from_str(&json).unwrap();
+        assert!(parsed.proxy.enabled);
+        assert_eq!(parsed.projects[0].proxy_mode, ProjectProxyMode::Enabled);
+        assert_eq!(parsed.session_aliases["/tmp/proj"]["codex:abc"], "My Session");
+        assert!(parsed.session_pins["/tmp/proj"]["codex:abc"]);
+    }
+
+    #[test]
+    fn migrate_config_restores_missing_shells() {
+        let mut config = AppConfig::default();
+        config.default_shell.clear();
+        config.available_shells.clear();
+
+        let migrated = migrate_config(config);
+        assert!(!migrated.available_shells.is_empty());
+        assert!(!migrated.default_shell.is_empty());
+        assert!(migrated
+            .available_shells
+            .iter()
+            .any(|shell| shell.name == migrated.default_shell));
     }
 
     #[test]

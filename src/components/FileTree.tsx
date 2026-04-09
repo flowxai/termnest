@@ -7,7 +7,6 @@ import { useTauriEvent } from '../hooks/useTauriEvent';
 import { showContextMenu } from '../utils/contextMenu';
 import { showPrompt } from '../utils/prompt';
 import { DiffModal } from './DiffModal';
-import { FileViewerModal } from './FileViewerModal';
 import type { FileEntry, FsChangePayload, GitFileStatus, PtyOutputPayload } from '../types';
 
 interface TreeNodeProps {
@@ -16,7 +15,7 @@ interface TreeNodeProps {
   depth: number;
   gitStatusMap: Map<string, GitFileStatus>;
   onViewDiff: (status: GitFileStatus) => void;
-  onViewFile: (path: string) => void;
+  onViewFile: (path: string, name: string) => void;
 }
 
 function getRelativePath(targetPath: string, rootPath: string) {
@@ -59,10 +58,10 @@ function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewF
       const rel = getRelativePath(entry.path, projectRoot).replace(/\\/g, '/');
       const fileStatus = gitStatusMap.get(rel);
       if (fileStatus) {
-        onViewDiff(fileStatus);
-      } else {
-        onViewFile(entry.path);
+        onViewFile(entry.path, entry.name);
+        return;
       }
+      onViewFile(entry.path, entry.name);
       return;
     }
     const next = !expanded;
@@ -313,10 +312,11 @@ export function FileTree() {
     setDiffTarget(status);
   }, []);
 
-  const [viewFilePath, setViewFilePath] = useState<string | null>(null);
-  const handleViewFile = useCallback((path: string) => {
-    setViewFilePath(path);
-  }, []);
+  const openEditor = useAppStore((s) => s.openEditor);
+  const handleViewFile = useCallback((path: string, name: string) => {
+    if (!activeProjectId) return;
+    openEditor(activeProjectId, path, name);
+  }, [activeProjectId, openEditor]);
 
   const handleRootContextMenu = useCallback((e: React.MouseEvent) => {
     if (!project) return;
@@ -370,13 +370,6 @@ export function FileTree() {
           />
         ))}
       </div>
-      {viewFilePath && (
-        <FileViewerModal
-          open={!!viewFilePath}
-          onClose={() => setViewFilePath(null)}
-          filePath={viewFilePath}
-        />
-      )}
       {diffTarget && (
         <DiffModal
           open={!!diffTarget}
