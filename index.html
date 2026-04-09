@@ -13,7 +13,7 @@
   <body>
     <script>
       (function(){
-        var t = localStorage.getItem('termnest-theme') || localStorage.getItem('mini-term-theme');
+        var t = localStorage.getItem('termnest-theme');
         if (t === 'light' || t === 'dark') {
           document.documentElement.dataset.theme = t;
         }

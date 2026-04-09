@@ -5,13 +5,16 @@
 <h1 align="center">TermNest</h1>
 
 <p align="center">
-  <strong>为 AI 时代打造的桌面终端管理器</strong><br>
-  基于 Tauri v2 · 多项目 · 多标签 · 分屏布局 · AI 进程感知
+  面向 AI 编码工作流的桌面工作台
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.9-blue" alt="version">
-  <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="platform">
+  Tauri v2 · 项目管理 · 会话恢复 · 终端分屏 · 轻量编辑器
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.9-blue" alt="version">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="platform">
   <img src="https://img.shields.io/badge/Tauri-v2-orange" alt="tauri">
   <img src="https://img.shields.io/badge/React-19-61dafb" alt="react">
   <img src="https://img.shields.io/badge/Rust-2021-dea584" alt="rust">
@@ -19,94 +22,143 @@
 
 ---
 
-## 解决痛点
+## 简介
 
-1. **重量级工具多余** — All In AI 的用户只需要终端跑 Agent，却不得不打开 VS Code / IDEA 等重型 IDE，大且占内存
-2. **多 Agent 并发无感知** — 同时开多个 Claude / Codex 会话，某个 Agent 跑完了无法直观看到
-3. **项目切换不便** — 系统终端缺少多项目组织、标签页和分屏管理能力
+`TermNest` 不是传统 IDE，也不只是系统终端的桌面壳。
 
-TermNest 用一个轻量桌面应用解决以上所有问题。
+它的目标很明确：把 AI 编码过程中最常用的几个环节放进同一个窗口里：
 
-## 预览
+- 项目切换
+- AI 会话恢复
+- 多终端管理
+- 分屏协作
+- 轻量文件编辑
+- Git 查看
+
+如果你的日常工作流是同时开多个项目、多个 `Claude Code` / `Codex` 会话，再配合终端与少量代码编辑，那么 `TermNest` 会比“系统终端 + 编辑器 + 一堆窗口”更顺。
+
+## 为什么做这个
+
+在 AI 编码工作流里，很多人真正高频使用的不是完整 IDE，而是：
+
+- 一个能长期挂着的终端
+- 能快速切换项目的工作区
+- 能续接上一次 AI 会话的入口
+- 能随手改几个文件并保存的编辑器
+- 能看到当前仓库改了什么的 Git 面板
+
+传统 IDE 往往太重，系统终端又太散。  
+`TermNest` 想解决的就是这个中间地带。
+
+## 核心能力
+
+### 1. 项目工作台
+
+- 左侧统一管理多个项目
+- 支持项目分组、拖拽排序和折叠
+- 在同一个窗口里切换不同仓库和会话上下文
+
+### 2. 终端优先
+
+- 顶层 terminal tabs
+- 递归分屏
+- 终端标题重命名
+- 终端状态聚合
+- 终端内容缓存，切换布局不丢屏幕内容
+
+### 3. AI Sessions
+
+- 自动读取本机 `Claude` / `Codex` 会话
+- 单击直接恢复会话
+- 本地别名
+- 本地置顶
+- 按最后活跃时间排序
+- 删除原始会话记录
+
+### 4. 轻量编辑器
+
+- 文件树单击直接打开
+- 多文件标签
+- 脏状态提示
+- `Cmd/Ctrl + S` 保存
+- 外部文件修改检测
+- 无终端时编辑器独占，有终端时与终端共存
+
+### 5. Git 面板
+
+- 文件树显示 Git 状态
+- 工作区 Diff
+- 提交历史
+- 提交文件 Diff
+- 多仓库发现
+
+### 6. 环境与配置
+
+- 多 Shell 配置
+- 全局代理 + 项目级代理覆盖
+- 主题切换
+- 布局持久化
+- 版本检查
+
+## 界面预览
+
+### 主工作台
 
 ![主界面](docs/screenshots/main.png)
+
+### 设置
+
 ![设置界面](docs/screenshots/settings.png)
 
+### Git 与工作区
 
-## 功能特性
+![Git 与工作区](docs/screenshots/git.png)
 
-### 终端核心
+## 当前定位
 
-- **多标签管理** — 每个项目独立标签页，拖拽排序，状态图标一目了然
+`TermNest` 现在的定位是：
 
-- **递归分屏** — 横向 / 纵向任意嵌套分屏，Allotment 拖拽调整比例
+- 一个已经可用的 AI-first 桌面工作台
+- 一个终端优先的轻量开发环境
+- 一个比系统终端更适合恢复 AI 会话的入口
 
-- **高性能渲染** — xterm.js v6 + WebGL 加速，自动降级为 Canvas
+它**不是**：
 
-- **10 万行滚动缓冲** — 大量日志输出也不丢失
+- 传统大而全 IDE
+- 完整 Git 客户端
+- Monaco 级重型代码编辑器
 
-- **终端缓存** — 切换标签 / 分屏不丢失已有内容
+## 已知限制
 
-- **快捷键** — Ctrl+Shift+C/V 复制粘贴，文件拖拽到终端自动插入路径
+当前有几件事是刻意保持诚实的：
 
-  
+- 内嵌终端对不同版本 `Codex` 的 TUI 兼容性仍可能波动
+- Git `pull/push` 目前还是轻封装，不是完整交互式流程
+- 编辑器适合轻量修改，不追求完整 IDE 能力
 
-### AI 进程感知
-
-- **实时状态检测** — 自动识别终端中运行的 Claude / Codex，显示 idle / working / error 状态
-- **状态聚合** — 从单个面板 → 标签页 → 项目级别逐层聚合，优先级 `error > ai-working > ai-idle > idle`
-- **会话历史** — 读取本地 Claude / Codex 历史会话记录，右键复制恢复命令快速续接
-
-
-
-### 项目管理
-
-- **项目列表** — 左侧边栏管理多个项目目录，一键切换工作区
-- **嵌套分组** — 最多 3 级项目分组，拖拽排序，折叠 / 展开
-- **文件树** — 集成目录浏览器，自动过滤 `.gitignore` 条目，文件监听实时刷新
-
-
-
-### Git 集成
-
-- **文件状态** — 文件树显示 Git 状态颜色（修改 / 新增 / 删除 / 冲突）
-- **变更 Diff** — 查看工作区文件变更的详细 Diff
-- **提交历史** — 浏览仓库提交记录，支持游标分页加载
-- **提交 Diff** — 查看任意提交的文件变更，支持并排 / 内联两种 Diff 模式
-- **多仓库发现** — 自动扫描项目目录下所有 Git 仓库
-
-![Git 集成](docs/screenshots/git.png)
-
-### 其他
-
-- **布局持久化** — 分屏比例、标签页、窗口大小 / 位置自动保存，重启恢复
-- **关闭确认** — 关闭窗口前弹出二次确认，避免误操作
-- **版本检查** — 启动时自动检查更新，标题栏显示新版本提示
-- **Warm Carbon 主题** — 暖炭色调，自定义 CSS 变量体系
-- **多 Shell 支持** — 可配置多种 Shell（PowerShell、CMD、Git Bash 等）
+如果你的主要工作流是 `Claude Code + 多终端 + 会话恢复 + 轻量编辑`，它已经比较适合。  
+如果你想要的是完整 IDE 级代码理解、调试、重构与语言服务，那它不是替代品。
 
 ## 技术栈
 
 | 层 | 技术 |
 |---|---|
-| 框架 | Tauri v2（Rust 后端 + WebView 前端） |
-| 前端 | React 19 + TypeScript 5.8 + Tailwind CSS v4 + Vite 7 |
-| 终端 | xterm.js v6（WebGL addon，Canvas 降级） |
-| 状态 | Zustand（全局单一 Store） |
-| 布局 | Allotment（三栏主布局 + 递归 SplitNode 分屏树） |
-| PTY | portable-pty 0.8 |
-| Git | git2 0.19 |
-| 文件监听 | notify 7 + ignore 0.4（.gitignore 过滤） |
+| 框架 | Tauri v2 |
+| 前端 | React 19 + TypeScript + Zustand + Tailwind CSS v4 + Vite 7 |
+| 终端 | xterm.js v6 |
+| 布局 | Allotment |
+| PTY | portable-pty |
+| Git | git2 |
+| 文件监听 | notify + ignore |
+| 后端 | Rust |
 
 ## 快速开始
 
-### 直接下载
+### 下载发行版
 
-前往 [Releases](https://github.com/flowxai/termnest/releases) 页面下载最新安装包。
+前往 [Releases](https://github.com/flowxai/termnest/releases) 下载最新版本。
 
-> 目前仅支持 Windows、MacOS 平台。
-
-### 从源码构建
+### 从源码运行
 
 #### 前置条件
 
@@ -114,93 +166,116 @@ TermNest 用一个轻量桌面应用解决以上所有问题。
 - [Rust](https://www.rust-lang.org/tools/install) >= 1.70
 - [Tauri v2 CLI](https://v2.tauri.app/start/prerequisites/)
 
-#### 安装与运行
+#### 安装依赖
 
 ```bash
-# 克隆仓库
 git clone https://github.com/flowxai/termnest.git
 cd termnest
-
-# 安装依赖
 npm install
+```
 
-# 启动完整 Tauri 开发环境（前端 + 后端）
+#### 启动开发环境
+
+```bash
 npm run tauri dev
+```
 
-# 构建发布包
+#### 构建发布包
+
+```bash
 npm run tauri build
 ```
 
+## 使用方式
+
+一个典型流程通常是：
+
+1. 在左侧添加项目
+2. 打开一个或多个终端
+3. 从 `Sessions` 面板恢复已有 `Claude` / `Codex` 会话
+4. 在中间文件树中打开文件并做轻量修改
+5. 在下方 Git 面板查看改动和提交历史
+
+这套交互的重点不是“做所有事”，而是把高频动作放到一个稳定窗口里。
+
 ## 项目结构
 
-```
-mini-term/
-├── src/                          # 前端源码
-│   ├── App.tsx                   # 三栏主布局入口
-│   ├── store.ts                  # Zustand 全局状态
-│   ├── types.ts                  # 类型定义
-│   ├── styles.css                # 全局样式与 CSS 变量
-│   └── components/
-│       ├── ProjectList.tsx       # 项目列表 + 嵌套分组
-│       ├── SessionList.tsx       # AI 会话历史列表
-│       ├── FileTree.tsx          # 文件目录树 + Git 状态
-│       ├── TerminalArea.tsx      # 标签管理 + 分屏逻辑
-│       ├── SplitLayout.tsx       # 递归渲染分屏树
-│       ├── TerminalInstance.tsx  # xterm.js 终端实例
-│       ├── TabBar.tsx            # 标签栏
-│       ├── GitHistory.tsx        # Git 提交历史面板
-│       ├── CommitDiffModal.tsx   # 提交 Diff 查看器
-│       ├── DiffModal.tsx         # 文件变更 Diff 查看器
-│       ├── FileViewerModal.tsx   # 文件内容查看器
-│       ├── SettingsModal.tsx     # 设置弹窗
-│       └── StatusDot.tsx         # 状态指示点
-├── src-tauri/                    # Rust 后端
+```text
+termnest/
+├── src/
+│   ├── App.tsx
+│   ├── store.ts
+│   ├── types.ts
+│   ├── styles.css
+│   ├── components/
+│   │   ├── ProjectList.tsx
+│   │   ├── SessionList.tsx
+│   │   ├── FileTree.tsx
+│   │   ├── WorkspaceArea.tsx
+│   │   ├── TerminalArea.tsx
+│   │   ├── SplitLayout.tsx
+│   │   ├── PaneGroup.tsx
+│   │   ├── TerminalInstance.tsx
+│   │   ├── EditorTabs.tsx
+│   │   ├── EditorPane.tsx
+│   │   ├── GitHistory.tsx
+│   │   ├── SettingsModal.tsx
+│   │   └── NotificationCenter.tsx
+│   └── utils/
+│       ├── terminalCache.ts
+│       ├── ptyWriteQueue.ts
+│       ├── themeManager.ts
+│       └── updateChecker.ts
+├── src-tauri/
 │   └── src/
-│       ├── lib.rs                # Tauri 初始化与命令注册
-│       ├── pty.rs                # PTY 生命周期管理
-│       ├── process_monitor.rs    # 进程状态轮询
-│       ├── config.rs             # 配置持久化
-│       ├── fs.rs                 # 目录列表与文件监听
-│       ├── git.rs                # Git 操作（状态/Diff/日志）
-│       └── ai_sessions.rs       # Claude/Codex 会话读取
-└── package.json
+│       ├── lib.rs
+│       ├── pty.rs
+│       ├── ai_sessions.rs
+│       ├── config.rs
+│       ├── fs.rs
+│       ├── git.rs
+│       └── process_monitor.rs
+├── docs/
+│   └── screenshots/
+└── README.md
 ```
 
 ## 架构概览
 
-### 数据流
-
-```
-用户键入 → xterm.onData → invoke('write_pty') → Rust PTY writer
-Rust PTY reader → 16ms 批量缓冲 → emit('pty-output') → term.write()
-进程监控 → 500ms 轮询子进程名 → emit('pty-status-change') → StatusDot 更新
-```
-
-### 状态优先级
-
-终端面板状态从叶节点聚合到标签页和项目级别：
-
-```
-error > ai-working > ai-idle > idle
+```text
+App
+├── 左栏：项目列表 + Sessions
+├── 中栏：文件树 + Git 历史
+└── 右栏：Workspace
+    ├── 编辑器区域
+    └── 终端区域（tabs + split tree）
 ```
 
-### 布局模型
+核心数据流：
 
-```
-App (Allotment 三栏)
-├── 左栏：ProjectList（项目 + 分组 + 会话）
-├── 中栏：FileTree（目录浏览 + Git 状态）
-└── 右栏
-    ├── TabBar（标签管理）
-    ├── SplitLayout（递归 SplitNode 分屏树）
-    │   └── TerminalInstance × N
-    └── GitHistory（提交历史面板）
+```text
+用户输入 -> xterm -> write_pty -> Rust PTY
+PTY 输出 -> backlog/attach -> pty-output -> xterm
+进程监控 -> pty-status-change -> 状态点/标签聚合
+文件变化 -> fs-change -> 文件树与编辑器刷新
 ```
 
-## 推荐开发环境
+## 开发建议
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+推荐环境：
 
-## 社区
+- VS Code
+- Tauri VS Code 插件
+- rust-analyzer
 
-学 AI，上 L 站 — [LinuxDO](https://linux.do/)
+常用命令：
+
+```bash
+npm run tauri dev
+npm run build
+cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+## 仓库
+
+- GitHub: [flowxai/termnest](https://github.com/flowxai/termnest)

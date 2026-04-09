@@ -275,7 +275,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("mini-term-{}-{}-{}", std::process::id(), nanos, name))
+        std::env::temp_dir().join(format!("termnest-{}-{}-{}", std::process::id(), nanos, name))
     }
 
     #[test]
