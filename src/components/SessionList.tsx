@@ -255,7 +255,7 @@ export function SessionList() {
                   {displayTitle}
                 </div>
                 {pinned && (
-                  <div className="text-[10px] text-[var(--accent)] truncate mt-0.5 leading-none">
+                  <div className="text-[10px] text-[var(--color-warning)] font-medium truncate mt-0.5 leading-none">
                     置顶
                   </div>
                 )}

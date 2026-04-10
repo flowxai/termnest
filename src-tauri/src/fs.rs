@@ -1,11 +1,11 @@
 use ignore::gitignore::Gitignore;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher, Event as NotifyEvent};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize)]
@@ -107,13 +107,44 @@ pub fn watch_directory(
     let project_path_clone = project_path.clone();
     let app_clone = app.clone();
 
+    // 防抖：200ms 内的 fs 事件合并成一次发送，避免 npm install / git 操作
+    // 触发数百个事件导致前端 IPC 风暴和列表重载。
+    let pending_paths: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    let pending_clone = pending_paths.clone();
+    let app_debounce = app_clone.clone();
+    let project_path_debounce = project_path_clone.clone();
+    let debounce_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let debounce_active_clone = debounce_active.clone();
+
     let mut watcher = notify::recommended_watcher(move |res: Result<NotifyEvent, _>| {
         if let Ok(event) = res {
-            for p in &event.paths {
-                let _ = app_clone.emit("fs-change", FsChangePayload {
-                    project_path: project_path_clone.clone(),
-                    path: p.to_string_lossy().to_string(),
-                    kind: format!("{:?}", event.kind),
+            {
+                let mut paths = pending_clone.lock().unwrap();
+                for p in &event.paths {
+                    paths.insert(p.to_string_lossy().to_string());
+                }
+            }
+            // 只在第一个事件时启动防抖定时器
+            if !debounce_active_clone.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                let pending = pending_paths.clone();
+                let app = app_debounce.clone();
+                let pp = project_path_debounce.clone();
+                let flag = debounce_active_clone.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(200));
+                    let paths: Vec<String> = {
+                        let mut set = pending.lock().unwrap();
+                        let v: Vec<String> = set.drain().collect();
+                        v
+                    };
+                    flag.store(false, std::sync::atomic::Ordering::Relaxed);
+                    for path in paths {
+                        let _ = app.emit("fs-change", FsChangePayload {
+                            project_path: pp.clone(),
+                            path,
+                            kind: "debounced".to_string(),
+                        });
+                    }
                 });
             }
         }

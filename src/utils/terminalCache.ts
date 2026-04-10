@@ -515,16 +515,6 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
   // 注意：WebGL 和 Canvas 渲染器在 Tauri WKWebView 中
   // 均存在多上下文兼容性问题，暂用默认 DOM 渲染器。
 
-  // Some TUIs (notably Codex) rely heavily on DECSET 2026 synchronized output.
-  // In the embedded terminal this can leave the renderer stuck in a degraded
-  // state, so we ignore that mode and prefer immediate rendering.
-  const syncOnDisp = term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
-    return params.length > 0 && params[0] === 2026;
-  });
-  const syncOffDisp = term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (params) => {
-    return params.length > 0 && params[0] === 2026;
-  });
-
   // 剪贴板快捷键
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== 'keydown') return true;
@@ -565,8 +555,6 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
     onDataDisp.dispose();
     onBinaryDisp.dispose();
     onResizeDisp.dispose();
-    syncOnDisp.dispose();
-    syncOffDisp.dispose();
     unsubscribePtyOutput();
     term.dispose();
   };

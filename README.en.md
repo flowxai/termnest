@@ -114,21 +114,49 @@ Global proxy defaults with per-project overrides. Only affects terminals inside 
 └──────────────────────────────────────────────────────┘
 ```
 
-## Quick Start
+## Installation
 
-### Download
+### Download the App
 
 Go to [Releases](https://github.com/flowxai/termnest/releases) for the latest build.
+
+macOS:
+
+```bash
+# Open the downloaded dmg
+# Drag TermNest.app into Applications
+open /Applications/TermNest.app
+```
+
+If you build locally from source, the bundled app is usually here:
+
+```bash
+src-tauri/target/release/bundle/macos/TermNest.app
+```
+
+### Run from Source
+
+```bash
+# Prerequisites: Node.js >= 18, Rust >= 1.70
+git clone https://github.com/flowxai/termnest.git
+cd termnest
+npm install
+npm run tauri dev
+```
 
 ### Build from Source
 
 ```bash
-# Prerequisites: Node.js >= 18, Rust >= 1.70, Tauri v2 CLI
 git clone https://github.com/flowxai/termnest.git
 cd termnest
 npm install
-npm run tauri dev      # development
-npm run tauri build    # production bundle
+npm run tauri build
+```
+
+After the build finishes, you can open the app directly:
+
+```bash
+open src-tauri/target/release/bundle/macos/TermNest.app
 ```
 
 ## Tech Stack

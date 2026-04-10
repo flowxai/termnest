@@ -114,21 +114,49 @@ AI 编码的日常不需要完整 IDE，需要的是一个**驾驶舱**：
 └──────────────────────────────────────────────────────┘
 ```
 
-## 快速开始
+## 安装
 
-### 下载
+### 直接下载 App
 
 前往 [Releases](https://github.com/flowxai/termnest/releases) 下载最新版本。
 
-### 从源码构建
+macOS：
 
 ```bash
-# 前置条件：Node.js >= 18, Rust >= 1.70, Tauri v2 CLI
+# 下载 dmg 后双击挂载
+# 将 TermNest.app 拖到 Applications
+open /Applications/TermNest.app
+```
+
+如果你是从源码本地打包，构建完成后的 app 通常在：
+
+```bash
+src-tauri/target/release/bundle/macos/TermNest.app
+```
+
+### 从源码运行
+
+```bash
+# 前置条件：Node.js >= 18, Rust >= 1.70
 git clone https://github.com/flowxai/termnest.git
 cd termnest
 npm install
-npm run tauri dev      # 开发环境
-npm run tauri build    # 生产构建
+npm run tauri dev
+```
+
+### 从源码打包
+
+```bash
+git clone https://github.com/flowxai/termnest.git
+cd termnest
+npm install
+npm run tauri build
+```
+
+本地构建完成后，可以直接打开：
+
+```bash
+open src-tauri/target/release/bundle/macos/TermNest.app
 ```
 
 ## 技术栈

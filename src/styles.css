@@ -148,13 +148,13 @@
   --bg-terminal-rgb: 7 9 12;
   --topbar-rgb: 17 19 23;
 
-  --accent: #8fa0b2;
-  --accent-muted: #8fa0b22b;
-  --accent-subtle: #8fa0b214;
+  --accent: #90b0cc;
+  --accent-muted: #90b0cc2b;
+  --accent-subtle: #90b0cc14;
 
-  --text-primary: #e3e8ee;
-  --text-secondary: #aab3bd;
-  --text-muted: #707882;
+  --text-primary: #f0f4f8;
+  --text-secondary: #b8c4d0;
+  --text-muted: #687480;
 
   --border-subtle: rgba(255, 255, 255, 0.05);
   --border-default: rgba(255, 255, 255, 0.09);

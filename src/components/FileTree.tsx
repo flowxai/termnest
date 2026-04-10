@@ -6,6 +6,7 @@ import { useAppStore, isExpanded, toggleExpandedDir } from '../store';
 import { useTauriEvent } from '../hooks/useTauriEvent';
 import { showContextMenu } from '../utils/contextMenu';
 import { showPrompt } from '../utils/prompt';
+import { getFileTreeCache, setFileTreeCache } from '../utils/projectSwitchCache';
 import { DiffModal } from './DiffModal';
 import type { FileEntry, FsChangePayload, GitFileStatus, PtyOutputPayload } from '../types';
 
@@ -268,8 +269,15 @@ export function FileTree() {
   }, [project?.path]);
 
   useEffect(() => {
-    loadGitStatus();
-  }, [loadGitStatus]);
+    if (!project) return;
+    const cached = getFileTreeCache(project.path);
+    if (!cached) {
+      loadGitStatus();
+      return;
+    }
+    const timer = window.setTimeout(loadGitStatus, 60);
+    return () => window.clearTimeout(timer);
+  }, [loadGitStatus, project?.path]);
 
   const debouncedRefresh = useCallback(() => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
@@ -287,12 +295,46 @@ export function FileTree() {
   useEffect(() => {
     if (!project) {
       setRootEntries([]);
+      setGitStatusMap(new Map());
+      setDiffTarget(null);
       return;
     }
+    const cached = getFileTreeCache(project.path);
+    if (cached) {
+      setRootEntries(cached.rootEntries);
+      setGitStatusMap(new Map(cached.gitStatuses.map((status) => [status.path, status])));
+    } else {
+      setRootEntries([]);
+      setGitStatusMap(new Map());
+    }
+    setDiffTarget(null);
+  }, [project?.path]);
+
+  useEffect(() => {
+    if (!project) return;
+    const cached = getFileTreeCache(project.path);
+    if (cached) {
+      const timer = window.setTimeout(() => {
+        loadRootEntries();
+        void invoke('watch_directory', { path: project.path, projectPath: project.path });
+      }, 60);
+      return () => {
+        window.clearTimeout(timer);
+        void invoke('unwatch_directory', { path: project.path });
+      };
+    }
     loadRootEntries();
-    invoke('watch_directory', { path: project.path, projectPath: project.path });
-    return () => { invoke('unwatch_directory', { path: project.path }); };
+    void invoke('watch_directory', { path: project.path, projectPath: project.path });
+    return () => { void invoke('unwatch_directory', { path: project.path }); };
   }, [project?.path, loadRootEntries]);
+
+  useEffect(() => {
+    if (!project) return;
+    setFileTreeCache(project.path, {
+      rootEntries,
+      gitStatuses: Array.from(gitStatusMap.values()),
+    });
+  }, [gitStatusMap, project?.path, rootEntries]);
 
   useTauriEvent<FsChangePayload>('fs-change', useCallback((payload: FsChangePayload) => {
     if (!project) return;

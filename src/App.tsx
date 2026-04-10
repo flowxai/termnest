@@ -5,7 +5,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ask } from '@tauri-apps/plugin-dialog';
-import { useAppStore, restoreLayout, flushLayoutToConfig, initExpandedDirs, flushExpandedDirsToConfig, persistConfig, countDirtyEditors } from './store';
+import { useAppStore, restoreLayout, flushLayoutToConfig, initExpandedDirs, flushExpandedDirsToConfig, persistConfig, countDirtyEditors, genId } from './store';
 import { ProjectList } from './components/ProjectList';
 import { FileTree } from './components/FileTree';
 import { GitHistory } from './components/GitHistory';
@@ -16,6 +16,7 @@ import { useTauriEvent } from './hooks/useTauriEvent';
 import { checkForUpdate, type ReleaseInfo } from './utils/updateChecker';
 import { applyTheme, applyUiStyle } from './utils/themeManager';
 import { updateAllTerminalThemes } from './utils/terminalCache';
+import { getEffectiveProxyState } from './utils/proxyStatus';
 import type { AppConfig, PtyStatusChangePayload, PtyExitPayload, PaneStatus } from './types';
 
 export function App() {
@@ -27,6 +28,8 @@ export function App() {
   const config = useAppStore((s) => s.config);
   const setConfig = useAppStore((s) => s.setConfig);
   const updatePaneStatusByPty = useAppStore((s) => s.updatePaneStatusByPty);
+  const pushNotification = useAppStore((s) => s.pushNotification);
+  const activeProject = config.projects.find((project) => project.id === activeProjectId) ?? null;
 
   useEffect(() => {
     invoke<AppConfig>('load_config').then((cfg) => {
@@ -82,6 +85,40 @@ export function App() {
     applyUiStyle(config.uiStyle ?? 'classic');
     updateAllTerminalThemes(config.terminalFollowTheme ?? true);
   }, [configLoaded, config.theme, config.uiStyle, config.terminalFollowTheme]);
+
+  const proxyWarningKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!configLoaded) return;
+
+    const proxyState = getEffectiveProxyState(config, activeProjectId);
+    if (!proxyState.empty) {
+      proxyWarningKeyRef.current = null;
+      return;
+    }
+
+    const project = proxyState.project;
+    const warningKey = [
+      activeProjectId ?? 'none',
+      config.proxy.enabled ? '1' : '0',
+      config.proxy.allProxy,
+      config.proxy.httpProxy,
+      config.proxy.httpsProxy,
+      project?.proxyMode ?? 'inherit',
+      project?.proxyOverride?.allProxy ?? '',
+      project?.proxyOverride?.httpProxy ?? '',
+      project?.proxyOverride?.httpsProxy ?? '',
+    ].join('|');
+
+    if (proxyWarningKeyRef.current === warningKey) return;
+    proxyWarningKeyRef.current = warningKey;
+
+    pushNotification({
+      id: genId(),
+      title: '代理为空',
+      message: `当前项目${project ? `「${project.name}」` : ''}的生效代理已启用但地址为空，Codex/Claude 等联网工具可能长时间无响应。请到“设置 -> 全局代理”或项目右键代理配置补全。`,
+      kind: 'warning',
+    });
+  }, [activeProjectId, config, configLoaded, pushNotification]);
 
   // 启动时获取版本号并检查更新
   useEffect(() => {
@@ -207,25 +244,21 @@ export function App() {
               onChange={saveMiddleColumnSizes}
             >
               <Allotment.Pane minSize={150}>
-                <FileTree key={activeProjectId} />
+                <FileTree />
               </Allotment.Pane>
               <Allotment.Pane minSize={36}>
-                <GitHistory key={activeProjectId} />
+                <GitHistory />
               </Allotment.Pane>
             </Allotment>
           </Allotment.Pane>
 
           <Allotment.Pane>
             <div className="relative h-full">
-              {config.projects.map((project) => (
-                <div
-                  key={project.id}
-                  className="absolute inset-0"
-                  style={{ display: project.id === activeProjectId ? 'block' : 'none' }}
-                >
-                  <WorkspaceArea projectId={project.id} projectPath={project.path} />
+              {activeProject && (
+                <div className="absolute inset-0">
+                  <WorkspaceArea projectId={activeProject.id} projectPath={activeProject.path} />
                 </div>
-              ))}
+              )}
               {config.projects.length === 0 && (
                 <div className="h-full bg-[var(--bg-terminal)] flex items-center justify-center text-[var(--text-muted)] text-sm">
                   请先在左栏添加项目

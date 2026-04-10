@@ -4,6 +4,7 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { useAppStore } from '../store';
 import { useTauriEvent } from '../hooks/useTauriEvent';
 import { showContextMenu } from '../utils/contextMenu';
+import { getGitHistoryCache, setGitHistoryCache } from '../utils/projectSwitchCache';
 import { formatRelativeTime } from '../utils/timeFormat';
 import { CommitDiffModal } from './CommitDiffModal';
 import type { GitRepoInfo, GitCommitInfo, CommitFileInfo, BranchInfo, PtyOutputPayload } from '../types';
@@ -156,8 +157,53 @@ export function GitHistory() {
   }, [project?.path]);
 
   useEffect(() => {
-    loadRepos();
-  }, [loadRepos]);
+    if (!project) return;
+    const cached = getGitHistoryCache(project.path);
+    if (!cached) {
+      loadRepos();
+      return;
+    }
+    const timer = window.setTimeout(loadRepos, 80);
+    return () => window.clearTimeout(timer);
+  }, [loadRepos, project?.path]);
+
+  useEffect(() => {
+    if (!project) {
+      setRepos([]);
+      setExpandedRepos(new Set());
+      setRepoStates(new Map());
+      setRepoBranches(new Map());
+      setDiffModal(null);
+      autoExpandedForRef.current = null;
+      return;
+    }
+
+    const cached = getGitHistoryCache(project.path);
+    if (cached) {
+      setRepos(cached.repos);
+      setExpandedRepos(new Set(cached.expandedRepoPaths));
+      setRepoStates(new Map(cached.repoStates));
+      setRepoBranches(new Map(cached.repoBranches));
+      autoExpandedForRef.current = cached.expandedRepoPaths.length > 0 ? project.path : null;
+    } else {
+      setRepos([]);
+      setExpandedRepos(new Set());
+      setRepoStates(new Map());
+      setRepoBranches(new Map());
+      autoExpandedForRef.current = null;
+    }
+    setDiffModal(null);
+  }, [project?.path]);
+
+  useEffect(() => {
+    if (!project) return;
+    setGitHistoryCache(project.path, {
+      repos,
+      expandedRepoPaths: Array.from(expandedRepos),
+      repoStates: Array.from(repoStates.entries()),
+      repoBranches: Array.from(repoBranches.entries()),
+    });
+  }, [expandedRepos, project?.path, repoBranches, repoStates, repos]);
 
   const loadBranches = useCallback(async (repoPath: string) => {
     try {

@@ -6,6 +6,7 @@ import { useAppStore } from '../store';
 import { checkForUpdate, compareVersions, type ReleaseInfo } from '../utils/updateChecker';
 import { applyTheme, applyUiStyle } from '../utils/themeManager';
 import { updateAllTerminalThemes } from '../utils/terminalCache';
+import { getEffectiveProxyState } from '../utils/proxyStatus';
 import type { ProxyConfig, ShellConfig, UiStyle } from '../types';
 
 interface Props {
@@ -320,7 +321,9 @@ function FontSizeSlider({
 
 function SystemSettings() {
   const config = useAppStore((s) => s.config);
+  const activeProjectId = useAppStore((s) => s.activeProjectId);
   const setConfig = useAppStore((s) => s.setConfig);
+  const effectiveProxyState = getEffectiveProxyState(config, activeProjectId);
 
   const handleUiFontSizeChange = useCallback((size: number) => {
     const newConfig = { ...useAppStore.getState().config, uiFontSize: size };
@@ -514,6 +517,18 @@ function SystemSettings() {
           onChange={(e) => handleProxyChange({ httpsProxy: e.target.value })}
         />
       </div>
+
+      {effectiveProxyState.empty && (
+        <div className="px-3 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10">
+          <div className="text-base text-[var(--text-primary)]">当前项目生效代理为空</div>
+          <div className="text-sm text-[var(--text-secondary)] mt-1">
+            {effectiveProxyState.project
+              ? `项目「${effectiveProxyState.project.name}」当前会按代理模式运行，但 ALL_PROXY / HTTP_PROXY / HTTPS_PROXY 都是空的。`
+              : '当前没有可用的生效代理地址。'}
+            {' '}Codex、Claude 和其他联网工具可能长时间无响应。
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, genId } from '../store';
 import { TerminalInstance } from './TerminalInstance';
@@ -17,9 +17,10 @@ interface Props {
 }
 
 export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNode }: Props) {
-  const config = useAppStore((s) => s.config);
+  const availableShells = useAppStore((s) => s.config.availableShells);
+  const defaultShell = useAppStore((s) => s.config.defaultShell);
   const pushNotification = useAppStore((s) => s.pushNotification);
-  const [headerHover, setHeaderHover] = useState(false);
+  // headerHover 用 CSS group-hover 处理，避免 React state 重渲染
   const nodeRef = useRef(node);
   nodeRef.current = node;
   const showPaneTabs = node.panes.length > 1;
@@ -28,8 +29,8 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
 
   const handleNewTab = useCallback(async (selectedShell?: ShellConfig) => {
     const shell = selectedShell
-      ?? config.availableShells.find((s) => s.name === config.defaultShell)
-      ?? config.availableShells[0];
+      ?? availableShells.find((s) => s.name === defaultShell)
+      ?? availableShells[0];
     if (!shell) {
       pushNotification({
         id: genId(),
@@ -80,22 +81,22 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
       panes: [...currentNode.panes, newPane],
       activePaneId: newPane.id,
     });
-  }, [config, projectPath, pushNotification, onUpdateNode]);
+  }, [availableShells, defaultShell, projectPath, pushNotification, onUpdateNode]);
 
   const handleNewTabClick = useCallback((e: React.MouseEvent) => {
-    if (config.availableShells.length <= 1) {
+    if (availableShells.length <= 1) {
       handleNewTab();
       return;
     }
     showContextMenu(
       e.clientX,
       e.clientY,
-      config.availableShells.map((shell) => ({
+      availableShells.map((shell) => ({
         label: shell.name,
         onClick: () => handleNewTab(shell),
       })),
     );
-  }, [config.availableShells, handleNewTab]);
+  }, [availableShells, handleNewTab]);
 
   const handleCloseTab = useCallback(async (paneId: string) => {
     const pane = nodeRef.current.panes.find((p) => p.id === paneId);
@@ -181,9 +182,7 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
 
   return (
     <div
-      className="w-full h-full flex flex-col"
-      onMouseEnter={() => setHeaderHover(true)}
-      onMouseLeave={() => setHeaderHover(false)}
+      className="group w-full h-full flex flex-col"
     >
       {showPaneTabs && (
         <div
@@ -236,8 +235,7 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
 
           <div className="ml-auto flex items-center gap-0.5 px-2 text-[12px]">
             <div
-              className="flex items-center gap-0.5 transition-opacity duration-150"
-              style={{ opacity: headerHover ? 1 : 0 }}
+              className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
             >
               <span
                 className="text-[var(--text-muted)] hover:text-[var(--accent)] cursor-pointer transition-colors px-0.5"
@@ -269,8 +267,7 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
       <div className="flex-1 overflow-hidden relative">
         {!showPaneTabs && (
           <div
-            className="pane-float-controls absolute top-2 right-2 z-10 flex items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--floating-control-bg)] border border-[var(--floating-control-border)] px-1.5 py-1 text-[12px] backdrop-blur-[var(--panel-blur)] shadow-[var(--interactive-shadow)] transition-opacity duration-150"
-            style={{ opacity: headerHover ? 1 : 0 }}
+            className="pane-float-controls absolute top-2 right-2 z-10 flex items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--floating-control-bg)] border border-[var(--floating-control-border)] px-1.5 py-1 text-[12px] backdrop-blur-[var(--panel-blur)] shadow-[var(--interactive-shadow)] opacity-0 group-hover:opacity-100 transition-opacity duration-150"
           >
             <span
               className="text-[var(--text-muted)] hover:text-[var(--accent)] cursor-pointer transition-colors px-0.5"
