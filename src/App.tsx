@@ -162,7 +162,7 @@ export function App() {
 
   return (
     <div className="app-shell flex flex-col h-full">
-      <div className="flex items-center gap-4 pr-4 py-2 bg-[var(--topbar-bg)] border-b border-[var(--topbar-border)] text-xs select-none shadow-[var(--topbar-shadow)] backdrop-blur-[var(--panel-blur)]"
+      <div className="app-topbar flex items-center gap-4 pr-4 py-2 bg-[var(--topbar-bg)] border-b border-[var(--topbar-border)] text-xs select-none shadow-[var(--topbar-shadow)] backdrop-blur-[var(--panel-blur)]"
         onMouseDown={(e) => { if (e.button === 0 && e.detail === 1) getCurrentWindow().startDragging(); }}
         style={{ paddingLeft: '78px' } as React.CSSProperties}>
         <span className="font-semibold text-[var(--accent)] text-sm" style={{ fontFamily: "var(--ui-display-font, 'DM Sans', sans-serif)", letterSpacing: 'var(--brand-letter-spacing, 0.05em)' }}>

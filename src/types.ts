@@ -31,7 +31,7 @@ export interface AppConfig {
   sessionPins: Record<string, Record<string, boolean>>;
 }
 
-export type UiStyle = 'classic' | 'pro' | 'workbench' | 'product';
+export type UiStyle = 'classic' | 'pro' | 'workbench' | 'product' | 'mission' | 'editorial' | 'dopamine';
 
 export type NotificationKind = 'info' | 'success' | 'warning' | 'error';
 

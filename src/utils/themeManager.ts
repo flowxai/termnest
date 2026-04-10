@@ -55,7 +55,15 @@ function resolveTheme(mode: ThemeMode): ResolvedTheme {
 }
 
 function normalizeUiStyle(style: string | null | undefined): UiStyle {
-  if (style === 'classic' || style === 'workbench' || style === 'product' || style === 'pro') {
+  if (
+    style === 'classic'
+    || style === 'workbench'
+    || style === 'product'
+    || style === 'pro'
+    || style === 'mission'
+    || style === 'editorial'
+    || style === 'dopamine'
+  ) {
     return style;
   }
   return 'classic';

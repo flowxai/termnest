@@ -10,7 +10,7 @@ interface Props {
 export function EditorTabs({ editors, activePath, onSelect, onClose }: Props) {
   return (
     <div
-      className="flex bg-[var(--tabbar-bg)] border-b border-[var(--tabbar-border)] text-[11px] overflow-x-auto select-none shrink-0"
+      className="editor-tabbar flex bg-[var(--tabbar-bg)] border-b border-[var(--tabbar-border)] text-[11px] overflow-x-auto select-none shrink-0"
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
       {editors.map((editor) => {
@@ -18,7 +18,7 @@ export function EditorTabs({ editors, activePath, onSelect, onClose }: Props) {
         return (
           <div
             key={editor.path}
-            className={`flex items-center gap-1.5 px-3 py-[5px] cursor-pointer whitespace-nowrap transition-all duration-100 relative ${
+            className={`editor-tab flex items-center gap-1.5 px-3 py-[5px] cursor-pointer whitespace-nowrap transition-all duration-100 relative ${
               isActive
                 ? 'bg-[var(--tab-active-bg)] text-[var(--text-primary)] shadow-[var(--tab-active-shadow)]'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--tab-hover-bg)]'

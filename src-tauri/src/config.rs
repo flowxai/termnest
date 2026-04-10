@@ -327,7 +327,7 @@ fn ensure_shell_config(config: &mut AppConfig) {
 
 fn ensure_ui_style(config: &mut AppConfig) {
     match config.ui_style.as_str() {
-        "classic" | "pro" | "workbench" | "product" => {}
+        "classic" | "pro" | "workbench" | "product" | "mission" | "editorial" | "dopamine" => {}
         _ => config.ui_style = default_ui_style(),
     }
 }
@@ -582,6 +582,24 @@ mod tests {
         assert_eq!(json["uiStyle"], "pro");
         assert_eq!(json["windowGlass"], false);
         assert_eq!(json["glassStrength"], 34.0);
+    }
+
+    #[test]
+    fn migrate_config_preserves_new_ui_styles() {
+        let mut mission = AppConfig::default();
+        mission.ui_style = "mission".into();
+        let mission = migrate_config(mission);
+        assert_eq!(mission.ui_style, "mission");
+
+        let mut editorial = AppConfig::default();
+        editorial.ui_style = "editorial".into();
+        let editorial = migrate_config(editorial);
+        assert_eq!(editorial.ui_style, "editorial");
+
+        let mut dopamine = AppConfig::default();
+        dopamine.ui_style = "dopamine".into();
+        let dopamine = migrate_config(dopamine);
+        assert_eq!(dopamine.ui_style, "dopamine");
     }
 
     #[test]

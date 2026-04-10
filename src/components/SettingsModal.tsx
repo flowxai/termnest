@@ -20,6 +20,9 @@ const UI_STYLE_OPTIONS: { value: UiStyle; label: string }[] = [
   { value: 'pro', label: '专业工具' },
   { value: 'workbench', label: '终端工作台' },
   { value: 'product', label: '现代产品' },
+  { value: 'mission', label: '任务中枢' },
+  { value: 'editorial', label: '编辑工坊' },
+  { value: 'dopamine', label: '多巴胺脉冲' },
 ];
 
 // ─── ShellRow（终端设置子组件）───
@@ -374,13 +377,14 @@ function SystemSettings() {
         UI 风格
       </div>
 
-      <div className="grid grid-cols-1 gap-2 mb-6">
+      <div className="ui-style-grid grid grid-cols-2 xl:grid-cols-3 gap-2 mb-6">
         {UI_STYLE_OPTIONS.map((opt) => {
           const active = (config.uiStyle ?? 'classic') === opt.value;
           return (
             <button
               key={opt.value}
-              className={`w-full text-left px-3 py-3 rounded-[var(--radius-md)] border transition-all ${
+              data-style={opt.value}
+              className={`ui-style-button w-full text-left px-3 py-3 rounded-[var(--radius-md)] border transition-all ${
                 active
                   ? 'bg-[var(--accent-subtle)] text-[var(--text-primary)] border-[var(--accent)] shadow-[var(--interactive-shadow)]'
                   : 'bg-[var(--control-bg)] text-[var(--text-secondary)] border-[var(--control-border)] hover:border-[var(--accent)] hover:bg-[var(--control-hover-bg)]'

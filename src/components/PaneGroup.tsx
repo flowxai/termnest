@@ -187,7 +187,7 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
     >
       {showPaneTabs && (
         <div
-          className="flex bg-[var(--tabbar-bg)] border-b border-[var(--tabbar-border)] text-[11px] overflow-x-auto select-none shrink-0"
+          className="pane-tabbar flex bg-[var(--tabbar-bg)] border-b border-[var(--tabbar-border)] text-[11px] overflow-x-auto select-none shrink-0"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {node.panes.map((pane) => {
@@ -195,7 +195,7 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
             return (
               <div
                 key={pane.id}
-                className={`flex items-center gap-1.5 px-3 py-[3px] cursor-pointer whitespace-nowrap transition-all duration-100 relative ${
+                className={`pane-tab flex items-center gap-1.5 px-3 py-[3px] cursor-pointer whitespace-nowrap transition-all duration-100 relative ${
                   isActive
                     ? 'bg-[var(--tab-active-bg)] text-[var(--text-primary)] shadow-[var(--tab-active-shadow)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--tab-hover-bg)]'
@@ -269,7 +269,7 @@ export function PaneGroup({ node, projectPath, onSplit, onClosePane, onUpdateNod
       <div className="flex-1 overflow-hidden relative">
         {!showPaneTabs && (
           <div
-            className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--floating-control-bg)] border border-[var(--floating-control-border)] px-1.5 py-1 text-[12px] backdrop-blur-[var(--panel-blur)] shadow-[var(--interactive-shadow)] transition-opacity duration-150"
+            className="pane-float-controls absolute top-2 right-2 z-10 flex items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--floating-control-bg)] border border-[var(--floating-control-border)] px-1.5 py-1 text-[12px] backdrop-blur-[var(--panel-blur)] shadow-[var(--interactive-shadow)] transition-opacity duration-150"
             style={{ opacity: headerHover ? 1 : 0 }}
           >
             <span

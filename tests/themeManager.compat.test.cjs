@@ -55,10 +55,20 @@ assert.equal(dataset.theme, 'dark');
 assert.equal(storage.get('termnest-theme'), 'dark');
 assert.equal(typeof mediaQueryListener, 'function');
 
-assert.doesNotThrow(() => applyUiStyle('workbench'));
-assert.equal(getResolvedUiStyle(), 'workbench');
-assert.equal(dataset.uiStyle, 'workbench');
-assert.equal(storage.get('termnest-ui-style'), 'workbench');
+assert.doesNotThrow(() => applyUiStyle('mission'));
+assert.equal(getResolvedUiStyle(), 'mission');
+assert.equal(dataset.uiStyle, 'mission');
+assert.equal(storage.get('termnest-ui-style'), 'mission');
+
+assert.doesNotThrow(() => applyUiStyle('editorial'));
+assert.equal(getResolvedUiStyle(), 'editorial');
+assert.equal(dataset.uiStyle, 'editorial');
+assert.equal(storage.get('termnest-ui-style'), 'editorial');
+
+assert.doesNotThrow(() => applyUiStyle('dopamine'));
+assert.equal(getResolvedUiStyle(), 'dopamine');
+assert.equal(dataset.uiStyle, 'dopamine');
+assert.equal(storage.get('termnest-ui-style'), 'dopamine');
 
 assert.doesNotThrow(() => applyWindowGlass(true, 48));
 assert.equal(dataset.windowGlass, 'on');

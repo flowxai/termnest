@@ -1,6 +1,6 @@
 [package]
 name = "termnest"
-version = "1.1.4"
+version = "1.2.3"
 description = "AI-first desktop terminal workspace"
 authors = ["flowxai"]
 edition = "2021"
