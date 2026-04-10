@@ -179,7 +179,9 @@ const DOUBLE_CTRLC_WINDOW: Duration = Duration::from_millis(1000);
 
 /// 按下 Enter 后扫描输出以检测 AI 命令 echo 的时间窗口
 const AI_ENTER_SCAN_WINDOW: Duration = Duration::from_millis(2000);
-const OUTPUT_BACKLOG_LIMIT: usize = 512 * 1024;
+const OUTPUT_BACKLOG_LIMIT: usize = 256 * 1024;
+const ATTACH_BACKLOG_LIMIT: usize = 96 * 1024;
+const MAX_BATCH: usize = 16 * 1024;
 
 /// 去除 ANSI 转义序列，返回纯文本
 fn strip_ansi_codes(s: &str) -> String {
@@ -309,18 +311,28 @@ fn resolve_proxy_env(config: &AppConfig, cwd: &str) -> Vec<(String, String)> {
     envs
 }
 
-fn trim_backlog_to_limit(backlog: &mut String) {
-    if backlog.len() <= OUTPUT_BACKLOG_LIMIT {
+fn trim_recent_output_to_limit(text: &mut String, limit: usize) {
+    if text.len() <= limit {
         return;
     }
 
-    let overflow = backlog.len() - OUTPUT_BACKLOG_LIMIT;
-    let cut = backlog
+    let overflow = text.len() - limit;
+    let cut = text
         .char_indices()
         .find(|(idx, _)| *idx >= overflow)
         .map(|(idx, _)| idx)
-        .unwrap_or(backlog.len());
-    backlog.replace_range(..cut, "");
+        .unwrap_or(text.len());
+    text.replace_range(..cut, "");
+}
+
+fn recent_output_suffix(text: &str, limit: usize) -> String {
+    let mut recent = text.to_string();
+    trim_recent_output_to_limit(&mut recent, limit);
+    recent
+}
+
+fn trim_backlog_to_limit(backlog: &mut String) {
+    trim_recent_output_to_limit(backlog, OUTPUT_BACKLOG_LIMIT);
 }
 
 #[derive(Clone)]
@@ -379,7 +391,8 @@ impl PtyManager {
 
         self.attached_outputs.lock().unwrap().insert(pty_id);
         let mut backlogs = self.output_backlogs.lock().unwrap();
-        Ok(backlogs.remove(&pty_id).unwrap_or_default())
+        let backlog = backlogs.remove(&pty_id).unwrap_or_default();
+        Ok(recent_output_suffix(&backlog, ATTACH_BACKLOG_LIMIT))
     }
 
     pub fn clear_output_state(&self, pty_id: u32) {
@@ -554,7 +567,6 @@ pub fn create_pty(
             // 如果数据量小（交互式打字），立即发送，延迟接近零。
             // 如果数据量大（编译日志、会话恢复），用 2ms 短窗口继续收集，
             // 但批次不超过 48KB，避免攒太久导致前端卡死。
-            const MAX_BATCH: usize = 48 * 1024;
             match rx.recv() {
                 Ok(data) => {
                     pending.extend(data);
@@ -1107,5 +1119,12 @@ mod tests {
         let backlog = mgr.output_backlogs.lock().unwrap().get(&1).cloned().unwrap();
         assert_eq!(backlog.len(), OUTPUT_BACKLOG_LIMIT);
         assert!(backlog.ends_with("tail"));
+    }
+
+    #[test]
+    fn attach_output_returns_recent_suffix_only() {
+        let recent = recent_output_suffix(&format!("{}tail", "x".repeat(ATTACH_BACKLOG_LIMIT)), ATTACH_BACKLOG_LIMIT);
+        assert_eq!(recent.len(), ATTACH_BACKLOG_LIMIT);
+        assert!(recent.ends_with("tail"));
     }
 }

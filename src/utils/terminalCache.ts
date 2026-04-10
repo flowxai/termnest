@@ -15,9 +15,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { useAppStore } from '../store';
-import type { PtyOutputPayload } from '../types';
-import { getResolvedTheme } from './themeManager';
+import type { PtyOutputPayload, UiStyle } from '../types';
+import { getResolvedTheme, getResolvedUiStyle } from './themeManager';
 import { createPtyWriteQueue } from './ptyWriteQueue';
+import { dispatchPtyOutput, hasPtyOutputSubscribers, subscribePtyOutput } from './ptyOutputRegistry';
 
 export interface CachedTerminal {
   term: Terminal;
@@ -29,68 +30,249 @@ interface CachedEntry extends CachedTerminal {
   cleanup: () => void;
   attached: boolean;
   attachPromise?: Promise<void>;
-  unlisten?: () => void;
 }
 
-export const DARK_TERMINAL_THEME = {
-  background: '#100f0d',
-  foreground: '#d8d4cc',
-  cursor: '#c8805a',
-  cursorAccent: '#100f0d',
-  selectionBackground: '#c8805a30',
-  selectionForeground: '#e5e0d8',
-  black: '#2a2824',
-  red: '#d4605a',
-  green: '#6bb87a',
-  yellow: '#d4a84a',
-  blue: '#6896c8',
-  magenta: '#b08cd4',
-  cyan: '#7dcfb8',
-  white: '#d8d4cc',
-  brightBlack: '#5c5850',
-  brightRed: '#e07060',
-  brightGreen: '#80d090',
-  brightYellow: '#e0b860',
-  brightBlue: '#80aad8',
-  brightMagenta: '#c0a0e0',
-  brightCyan: '#90e0c8',
-  brightWhite: '#e5e0d8',
+type TerminalPalette = {
+  background: string;
+  foreground: string;
+  cursor: string;
+  cursorAccent: string;
+  selectionBackground: string;
+  selectionForeground: string;
+  black: string;
+  red: string;
+  green: string;
+  yellow: string;
+  blue: string;
+  magenta: string;
+  cyan: string;
+  white: string;
+  brightBlack: string;
+  brightRed: string;
+  brightGreen: string;
+  brightYellow: string;
+  brightBlue: string;
+  brightMagenta: string;
+  brightCyan: string;
+  brightWhite: string;
 };
 
-export const LIGHT_TERMINAL_THEME = {
-  background: '#fafafa',
-  foreground: '#1a1a1a',
-  cursor: '#b06830',
-  cursorAccent: '#fafafa',
-  selectionBackground: '#b0683030',
-  selectionForeground: '#1a1a1a',
-  black: '#1a1a1a',
-  red: '#c0392b',
-  green: '#2d8a46',
-  yellow: '#b08620',
-  blue: '#2860a0',
-  magenta: '#8a5cb8',
-  cyan: '#1a8a6a',
-  white: '#808080',
-  brightBlack: '#666666',
-  brightRed: '#e04030',
-  brightGreen: '#38a058',
-  brightYellow: '#c89830',
-  brightBlue: '#3870b8',
-  brightMagenta: '#a070d0',
-  brightCyan: '#28a080',
-  brightWhite: '#a0a0a0',
+const TERMINAL_THEMES: Record<UiStyle, { dark: TerminalPalette; light: TerminalPalette }> = {
+  classic: {
+    dark: {
+      background: '#100f0d',
+      foreground: '#d8d4cc',
+      cursor: '#c8805a',
+      cursorAccent: '#100f0d',
+      selectionBackground: '#c8805a30',
+      selectionForeground: '#e5e0d8',
+      black: '#2a2824',
+      red: '#d4605a',
+      green: '#6bb87a',
+      yellow: '#d4a84a',
+      blue: '#6896c8',
+      magenta: '#b08cd4',
+      cyan: '#7dcfb8',
+      white: '#d8d4cc',
+      brightBlack: '#5c5850',
+      brightRed: '#e07060',
+      brightGreen: '#80d090',
+      brightYellow: '#e0b860',
+      brightBlue: '#80aad8',
+      brightMagenta: '#c0a0e0',
+      brightCyan: '#90e0c8',
+      brightWhite: '#e5e0d8',
+    },
+    light: {
+      background: '#fafafa',
+      foreground: '#1a1a1a',
+      cursor: '#b06830',
+      cursorAccent: '#fafafa',
+      selectionBackground: '#b0683030',
+      selectionForeground: '#1a1a1a',
+      black: '#1a1a1a',
+      red: '#c0392b',
+      green: '#2d8a46',
+      yellow: '#b08620',
+      blue: '#2860a0',
+      magenta: '#8a5cb8',
+      cyan: '#1a8a6a',
+      white: '#808080',
+      brightBlack: '#666666',
+      brightRed: '#e04030',
+      brightGreen: '#38a058',
+      brightYellow: '#c89830',
+      brightBlue: '#3870b8',
+      brightMagenta: '#a070d0',
+      brightCyan: '#28a080',
+      brightWhite: '#a0a0a0',
+    },
+  },
+  pro: {
+    dark: {
+      background: '#07090c',
+      foreground: '#d9dfe6',
+      cursor: '#9aa7b5',
+      cursorAccent: '#07090c',
+      selectionBackground: '#9aa7b528',
+      selectionForeground: '#f1f4f8',
+      black: '#1d232b',
+      red: '#c97a74',
+      green: '#7da48f',
+      yellow: '#b89a64',
+      blue: '#8c9fb1',
+      magenta: '#9b91bd',
+      cyan: '#7eaab0',
+      white: '#d9dfe6',
+      brightBlack: '#636e79',
+      brightRed: '#d9918b',
+      brightGreen: '#95b9a5',
+      brightYellow: '#c7ab7b',
+      brightBlue: '#a6b5c4',
+      brightMagenta: '#b2a8d0',
+      brightCyan: '#97bec3',
+      brightWhite: '#f1f4f8',
+    },
+    light: {
+      background: '#f5f6f8',
+      foreground: '#232a32',
+      cursor: '#5c6977',
+      cursorAccent: '#f5f6f8',
+      selectionBackground: '#5c697724',
+      selectionForeground: '#232a32',
+      black: '#232a32',
+      red: '#b86761',
+      green: '#4f826d',
+      yellow: '#96753c',
+      blue: '#607486',
+      magenta: '#766c9e',
+      cyan: '#5a858a',
+      white: '#7b858f',
+      brightBlack: '#69747f',
+      brightRed: '#c97a74',
+      brightGreen: '#659681',
+      brightYellow: '#ab8b53',
+      brightBlue: '#75899b',
+      brightMagenta: '#8d84b4',
+      brightCyan: '#729ba0',
+      brightWhite: '#9ca5af',
+    },
+  },
+  workbench: {
+    dark: {
+      background: '#120d09',
+      foreground: '#e5d9c9',
+      cursor: '#d98d4e',
+      cursorAccent: '#120d09',
+      selectionBackground: '#d98d4e2f',
+      selectionForeground: '#f2e9dc',
+      black: '#2f2218',
+      red: '#d86c55',
+      green: '#84b56f',
+      yellow: '#d1a957',
+      blue: '#8a9ed1',
+      magenta: '#c08bd7',
+      cyan: '#7dcab2',
+      white: '#e5d9c9',
+      brightBlack: '#705845',
+      brightRed: '#e8836f',
+      brightGreen: '#98ca81',
+      brightYellow: '#e0bd73',
+      brightBlue: '#9fb3e1',
+      brightMagenta: '#d0a4e4',
+      brightCyan: '#94ddc8',
+      brightWhite: '#f2e9dc',
+    },
+    light: {
+      background: '#fbf5ec',
+      foreground: '#2b221b',
+      cursor: '#b56d34',
+      cursorAccent: '#fbf5ec',
+      selectionBackground: '#b56d3426',
+      selectionForeground: '#2b221b',
+      black: '#2b221b',
+      red: '#c65d46',
+      green: '#4b8550',
+      yellow: '#a67d25',
+      blue: '#5d77a6',
+      magenta: '#8d63b8',
+      cyan: '#3d8b7c',
+      white: '#877868',
+      brightBlack: '#726354',
+      brightRed: '#dc7158',
+      brightGreen: '#5b9860',
+      brightYellow: '#bd9235',
+      brightBlue: '#718cbf',
+      brightMagenta: '#a179ce',
+      brightCyan: '#4ba091',
+      brightWhite: '#a29383',
+    },
+  },
+  product: {
+    dark: {
+      background: '#091221',
+      foreground: '#eef4ff',
+      cursor: '#66d6ff',
+      cursorAccent: '#091221',
+      selectionBackground: '#66d6ff2e',
+      selectionForeground: '#ffffff',
+      black: '#223554',
+      red: '#ff7e8a',
+      green: '#59d5a4',
+      yellow: '#f0c36a',
+      blue: '#72adff',
+      magenta: '#c19aff',
+      cyan: '#53e0d2',
+      white: '#eef4ff',
+      brightBlack: '#6e85a5',
+      brightRed: '#ff9ca5',
+      brightGreen: '#79e4b8',
+      brightYellow: '#ffd285',
+      brightBlue: '#95c4ff',
+      brightMagenta: '#d4b6ff',
+      brightCyan: '#79eee2',
+      brightWhite: '#ffffff',
+    },
+    light: {
+      background: '#f7fbff',
+      foreground: '#1b2940',
+      cursor: '#2287e6',
+      cursorAccent: '#f7fbff',
+      selectionBackground: '#2287e620',
+      selectionForeground: '#1b2940',
+      black: '#1b2940',
+      red: '#de5c69',
+      green: '#279b78',
+      yellow: '#b58a2f',
+      blue: '#2b87ea',
+      magenta: '#7d68df',
+      cyan: '#1d9cab',
+      white: '#8b9db1',
+      brightBlack: '#728398',
+      brightRed: '#ed7280',
+      brightGreen: '#35b38b',
+      brightYellow: '#c89f44',
+      brightBlue: '#479df5',
+      brightMagenta: '#9581eb',
+      brightCyan: '#34b2c1',
+      brightWhite: '#a2b4c8',
+    },
+  },
 };
 
-export function getTerminalTheme(terminalFollowTheme: boolean): typeof DARK_TERMINAL_THEME {
+export function getTerminalTheme(terminalFollowTheme: boolean) {
+  const style = getResolvedUiStyle();
+  const palette = TERMINAL_THEMES[style];
   if (terminalFollowTheme && getResolvedTheme() === 'light') {
-    return LIGHT_TERMINAL_THEME;
+    return palette.light;
   }
-  return DARK_TERMINAL_THEME;
+  return palette.dark;
 }
 
 const cache = new Map<number, CachedEntry>();
 const readyMap = new Map<number, { promise: Promise<void>; resolve: () => void }>();
+let ptyOutputUnlisten: (() => void) | null = null;
+let ptyOutputListenPromise: Promise<void> | null = null;
 
 function getOrCreateReadyEntry(ptyId: number) {
   let entry = readyMap.get(ptyId);
@@ -120,6 +302,29 @@ export function signalTerminalReady(ptyId: number): void {
     readyMap.delete(ptyId);
   }
 }
+
+async function ensureGlobalPtyOutputListener(): Promise<void> {
+  if (ptyOutputUnlisten) return;
+  if (ptyOutputListenPromise) return ptyOutputListenPromise;
+
+  ptyOutputListenPromise = listen<PtyOutputPayload>('pty-output', (event) => {
+    dispatchPtyOutput(event.payload);
+  }).then((unlisten) => {
+    ptyOutputUnlisten = unlisten;
+  }).finally(() => {
+    ptyOutputListenPromise = null;
+  });
+
+  return ptyOutputListenPromise;
+}
+
+function maybeDisposeGlobalPtyOutputListener(): void {
+  if (cache.size > 0) return;
+  if (hasPtyOutputSubscribers()) return;
+  ptyOutputUnlisten?.();
+  ptyOutputUnlisten = null;
+}
+
 const enqueuePtyWrite = createPtyWriteQueue((ptyId, data) =>
   invoke('write_pty', { ptyId, data })
 );
@@ -147,6 +352,7 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
     cursorStyle: 'bar',
     cursorWidth: 2,
     scrollback: 10000,
+    smoothScrollDuration: 150,
     letterSpacing: 0,
     lineHeight: 1.35,
     theme: getTerminalTheme(useAppStore.getState().config.terminalFollowTheme ?? true),
@@ -196,6 +402,9 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
   const onBinaryDisp = term.onBinary((data) => {
     void writePtyBinary(ptyId, data);
   });
+  const unsubscribePtyOutput = subscribePtyOutput(ptyId, (data) => {
+    term.write(data);
+  });
 
   // 终端 resize → 同步到 PTY
   const onResizeDisp = term.onResize(({ cols, rows }) => {
@@ -203,12 +412,12 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
   });
 
   const cleanup = () => {
-    entry.unlisten?.();
     onDataDisp.dispose();
     onBinaryDisp.dispose();
     onResizeDisp.dispose();
     syncOnDisp.dispose();
     syncOffDisp.dispose();
+    unsubscribePtyOutput();
     term.dispose();
   };
 
@@ -235,33 +444,25 @@ export async function ensurePtyOutputAttached(ptyId: number): Promise<void> {
   if (entry.attachPromise) return entry.attachPromise;
 
   entry.attachPromise = (async () => {
-    const unlisten = await listen<PtyOutputPayload>('pty-output', (event) => {
-      if (event.payload.ptyId === ptyId) {
-        entry.term.write(event.payload.data);
-      }
-    });
-
+    await ensureGlobalPtyOutputListener();
     try {
-      entry.unlisten = unlisten;
       const backlog = await invoke<string>('attach_pty_output', { ptyId });
       if (backlog) {
         // 分块写入，避免大 backlog 一次性阻塞主线程
-        const CHUNK = 64 * 1024;
+        const CHUNK = 12 * 1024;
         if (backlog.length <= CHUNK) {
           entry.term.write(backlog);
         } else {
           for (let i = 0; i < backlog.length; i += CHUNK) {
             entry.term.write(backlog.slice(i, i + CHUNK));
             if (i + CHUNK < backlog.length) {
-              await new Promise((r) => setTimeout(r, 0));
+              await new Promise<void>((r) => requestAnimationFrame(() => r()));
             }
           }
         }
       }
       entry.attached = true;
     } catch (error) {
-      unlisten();
-      entry.unlisten = undefined;
       throw error;
     } finally {
       entry.attachPromise = undefined;
@@ -278,6 +479,7 @@ export function disposeTerminal(ptyId: number): void {
   entry.wrapper.remove();
   entry.cleanup();
   cache.delete(ptyId);
+  maybeDisposeGlobalPtyOutputListener();
 }
 
 export function updateAllTerminalThemes(terminalFollowTheme: boolean): void {

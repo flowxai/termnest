@@ -14,8 +14,18 @@
     <script>
       (function(){
         var t = localStorage.getItem('termnest-theme');
+        var uiStyle = localStorage.getItem('termnest-ui-style');
+        var windowGlass = localStorage.getItem('termnest-window-glass');
+        var glassStrength = localStorage.getItem('termnest-glass-strength');
         if (t === 'light' || t === 'dark') {
           document.documentElement.dataset.theme = t;
+        }
+        if (uiStyle === 'classic' || uiStyle === 'pro' || uiStyle === 'workbench' || uiStyle === 'product') {
+          document.documentElement.dataset.uiStyle = uiStyle;
+        }
+        document.documentElement.dataset.windowGlass = windowGlass === '1' ? 'on' : 'off';
+        if (glassStrength && !Number.isNaN(Number(glassStrength))) {
+          document.documentElement.style.setProperty('--glass-strength', String(Math.max(0, Math.min(100, Number(glassStrength)))));
         }
       })();
     </script>

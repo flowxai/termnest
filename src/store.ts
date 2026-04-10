@@ -75,6 +75,9 @@ function updatePaneStatus(node: SplitNode, ptyId: number, status: PaneStatus): S
   if (node.type === 'leaf') {
     const idx = node.panes.findIndex((p) => p.ptyId === ptyId);
     if (idx >= 0) {
+      if (node.panes[idx].status === status) {
+        return node;
+      }
       const newPanes = [...node.panes];
       newPanes[idx] = { ...newPanes[idx], status };
       return { ...node, panes: newPanes };
@@ -91,6 +94,11 @@ function updatePaneStatus(node: SplitNode, ptyId: number, status: PaneStatus): S
 export function collectPtyIds(node: SplitNode): number[] {
   if (node.type === 'leaf') return node.panes.map((p) => p.ptyId);
   return node.children.flatMap(collectPtyIds);
+}
+
+function hasPtyId(node: SplitNode, ptyId: number): boolean {
+  if (node.type === 'leaf') return node.panes.some((p) => p.ptyId === ptyId);
+  return node.children.some((child) => hasPtyId(child, ptyId));
 }
 
 export async function createTerminalTab(
@@ -447,6 +455,9 @@ export const useAppStore = create<AppStore>((set) => ({
     uiFontSize: 13,
     terminalFontSize: 14,
     theme: 'auto',
+    uiStyle: 'classic',
+    windowGlass: true,
+    glassStrength: 34,
     terminalFollowTheme: true,
     proxy: {
       enabled: false,
@@ -581,7 +592,7 @@ export const useAppStore = create<AppStore>((set) => ({
       for (const ps of state.projectStates.values()) {
         if (found) break;
         for (const tab of ps.tabs) {
-          if (collectPtyIds(tab.splitLayout).includes(ptyId)) { found = true; break; }
+          if (hasPtyId(tab.splitLayout, ptyId)) { found = true; break; }
         }
       }
       if (!found) return state;

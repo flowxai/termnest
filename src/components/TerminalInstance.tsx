@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store';
-import { getOrCreateTerminal, getCachedTerminal, getTerminalTheme, DARK_TERMINAL_THEME, writePtyInput, ensurePtyOutputAttached, signalTerminalReady } from '../utils/terminalCache';
+import { getOrCreateTerminal, getCachedTerminal, getTerminalTheme, writePtyInput, ensurePtyOutputAttached, signalTerminalReady } from '../utils/terminalCache';
 import { getResolvedTheme } from '../utils/themeManager';
 import '@xterm/xterm/css/xterm.css';
 
@@ -17,7 +17,7 @@ export function TerminalInstance({ ptyId }: Props) {
 
   // 终端不跟随主题且处于浅色模式时，面板背景强制深色
   const forceDarkBg = !terminalFollowTheme && getResolvedTheme() === 'light';
-  const panelBg = forceDarkBg ? DARK_TERMINAL_THEME.background : undefined;
+  const panelBg = forceDarkBg ? getTerminalTheme(false).background : undefined;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -75,7 +75,11 @@ export function TerminalInstance({ ptyId }: Props) {
       }
     };
     window.addEventListener('theme-changed', handler);
-    return () => window.removeEventListener('theme-changed', handler);
+    window.addEventListener('ui-style-changed', handler);
+    return () => {
+      window.removeEventListener('theme-changed', handler);
+      window.removeEventListener('ui-style-changed', handler);
+    };
   }, [ptyId]);
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {

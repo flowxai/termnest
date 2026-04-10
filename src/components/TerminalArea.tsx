@@ -215,7 +215,7 @@ export function TerminalArea({ projectId, projectPath }: Props) {
     <div className="flex flex-col h-full bg-[var(--bg-terminal)]">
       {showTerminalTabs && ps && (
         <div
-          className="flex bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-[11px] overflow-x-auto select-none shrink-0"
+          className="flex bg-[var(--tabbar-bg)] border-b border-[var(--tabbar-border)] text-[11px] overflow-x-auto select-none shrink-0"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {ps.tabs.map((tab) => {
@@ -225,8 +225,8 @@ export function TerminalArea({ projectId, projectPath }: Props) {
                 key={tab.id}
                 className={`group flex shrink-0 items-center gap-1.5 px-3 py-[5px] cursor-pointer whitespace-nowrap transition-all duration-100 relative min-w-0 max-w-[220px] ${
                   isActive
-                    ? 'bg-[var(--bg-terminal)] text-[var(--text-primary)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]'
+                    ? 'bg-[var(--tab-active-bg)] text-[var(--text-primary)] shadow-[var(--tab-active-shadow)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--tab-hover-bg)]'
                 }`}
                 onClick={() => setActiveTab(projectId, tab.id)}
                 title={getTabLabel(tab)}

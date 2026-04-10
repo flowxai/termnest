@@ -4579,7 +4579,7 @@ dependencies = [
 
 [[package]]
 name = "termnest"
-version = "1.0.10"
+version = "1.1.4"
 dependencies = [
  "dirs",
  "git2",

@@ -52,6 +52,12 @@ pub struct AppConfig {
     pub middle_column_sizes: Option<Vec<f64>>,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "legacy_ui_style")]
+    pub ui_style: String,
+    #[serde(default)]
+    pub window_glass: bool,
+    #[serde(default = "default_glass_strength")]
+    pub glass_strength: f64,
     #[serde(default = "default_terminal_follow_theme")]
     pub terminal_follow_theme: bool,
     #[serde(default)]
@@ -161,6 +167,9 @@ pub enum ProjectProxyMode {
 fn default_ui_font_size() -> f64 { 13.0 }
 fn default_terminal_font_size() -> f64 { 14.0 }
 fn default_theme() -> String { "auto".into() }
+fn default_ui_style() -> String { "pro".into() }
+fn legacy_ui_style() -> String { "classic".into() }
+fn default_glass_strength() -> f64 { 34.0 }
 fn default_terminal_follow_theme() -> bool { true }
 fn default_project_proxy_mode() -> ProjectProxyMode { ProjectProxyMode::Inherit }
 
@@ -178,6 +187,9 @@ impl Default for AppConfig {
             layout_sizes: None,
             middle_column_sizes: None,
             theme: default_theme(),
+            ui_style: default_ui_style(),
+            window_glass: false,
+            glass_strength: default_glass_strength(),
             terminal_follow_theme: default_terminal_follow_theme(),
             proxy: ProxyConfig::default(),
             session_aliases: HashMap::new(),
@@ -313,8 +325,24 @@ fn ensure_shell_config(config: &mut AppConfig) {
     }
 }
 
+fn ensure_ui_style(config: &mut AppConfig) {
+    match config.ui_style.as_str() {
+        "classic" | "pro" | "workbench" | "product" => {}
+        _ => config.ui_style = default_ui_style(),
+    }
+}
+
+fn ensure_glass_settings(config: &mut AppConfig) {
+    if !config.glass_strength.is_finite() {
+        config.glass_strength = default_glass_strength();
+    }
+    config.glass_strength = config.glass_strength.clamp(0.0, 100.0);
+}
+
 fn migrate_config(mut config: AppConfig) -> AppConfig {
     ensure_shell_config(&mut config);
+    ensure_ui_style(&mut config);
+    ensure_glass_settings(&mut config);
 
     // 迁移 SavedSplitNode: pane → panes
     for project in config.projects.iter_mut() {
@@ -369,6 +397,50 @@ pub fn save_config(app: AppHandle, config: AppConfig) -> Result<(), String> {
     save_migrated_config(&path, &normalized)
 }
 
+pub fn apply_window_glass_to_window(
+    window: &tauri::WebviewWindow,
+    enabled: bool,
+    strength: f64,
+) -> Result<(), String> {
+    let clamped_strength = strength.clamp(0.0, 100.0);
+
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::window::{Effect, EffectState, EffectsBuilder};
+        if enabled {
+            window
+                .set_effects(Some(
+                    EffectsBuilder::new()
+                        .effect(Effect::Sidebar)
+                        .state(EffectState::Active)
+                        .radius(8.0 + clamped_strength * 0.18)
+                        .build(),
+                ))
+                .map_err(|e| e.to_string())?;
+        } else {
+            window
+                .set_effects(None::<tauri::utils::config::WindowEffectsConfig>)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, enabled, clamped_strength);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_window_glass(
+    window: tauri::WebviewWindow,
+    enabled: bool,
+    strength: f64,
+) -> Result<(), String> {
+    apply_window_glass_to_window(&window, enabled, strength)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,6 +473,9 @@ mod tests {
         assert_eq!(config.projects.len(), 1);
         assert!(config.projects[0].saved_layout.is_none());
         assert_eq!(config.projects[0].proxy_mode, ProjectProxyMode::Inherit);
+        assert_eq!(config.ui_style, "classic");
+        assert!(!config.window_glass);
+        assert_eq!(config.glass_strength, 34.0);
     }
 
     #[test]
@@ -417,6 +492,9 @@ mod tests {
         assert!(config.project_groups.is_none());
         assert!(config.project_ordering.is_none());
         assert!(!config.proxy.enabled);
+        assert_eq!(config.ui_style, "classic");
+        assert!(!config.window_glass);
+        assert_eq!(config.glass_strength, 34.0);
     }
 
     #[test]
@@ -495,6 +573,15 @@ mod tests {
         assert_eq!(parsed.projects[0].proxy_mode, ProjectProxyMode::Enabled);
         assert_eq!(parsed.session_aliases["/tmp/proj"]["codex:abc"], "My Session");
         assert!(parsed.session_pins["/tmp/proj"]["codex:abc"]);
+    }
+
+    #[test]
+    fn default_config_serializes_default_ui_style() {
+        let config = AppConfig::default();
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(json["uiStyle"], "pro");
+        assert_eq!(json["windowGlass"], false);
+        assert_eq!(json["glassStrength"], 34.0);
     }
 
     #[test]

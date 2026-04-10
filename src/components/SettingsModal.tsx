@@ -4,16 +4,23 @@ import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useAppStore } from '../store';
 import { checkForUpdate, compareVersions, type ReleaseInfo } from '../utils/updateChecker';
-import { applyTheme } from '../utils/themeManager';
+import { applyTheme, applyUiStyle } from '../utils/themeManager';
 import { updateAllTerminalThemes } from '../utils/terminalCache';
-import type { ProxyConfig, ShellConfig } from '../types';
+import type { ProxyConfig, ShellConfig, UiStyle } from '../types';
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-type SettingsPage = 'terminal' | 'system' | 'shortcuts' | 'about';
+type SettingsPage = 'terminal' | 'system' | 'about';
+
+const UI_STYLE_OPTIONS: { value: UiStyle; label: string }[] = [
+  { value: 'classic', label: '经典' },
+  { value: 'pro', label: '专业工具' },
+  { value: 'workbench', label: '终端工作台' },
+  { value: 'product', label: '现代产品' },
+];
 
 // ─── ShellRow（终端设置子组件）───
 
@@ -333,6 +340,14 @@ function SystemSettings() {
     invoke('save_config', { config: newConfig });
   }, [setConfig]);
 
+  const handleUiStyleChange = useCallback((uiStyle: UiStyle) => {
+    const newConfig = { ...useAppStore.getState().config, uiStyle };
+    setConfig(newConfig);
+    applyUiStyle(uiStyle);
+    updateAllTerminalThemes(newConfig.terminalFollowTheme ?? true);
+    invoke('save_config', { config: newConfig });
+  }, [setConfig]);
+
   const handleTerminalFollowThemeChange = useCallback((follow: boolean) => {
     const newConfig = { ...useAppStore.getState().config, terminalFollowTheme: follow };
     setConfig(newConfig);
@@ -354,6 +369,35 @@ function SystemSettings() {
 
   return (
     <div className="space-y-6">
+      {/* 主题模式 */}
+      <div className="text-base text-[var(--text-muted)] uppercase tracking-[0.1em] mb-2">
+        UI 风格
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 mb-6">
+        {UI_STYLE_OPTIONS.map((opt) => {
+          const active = (config.uiStyle ?? 'classic') === opt.value;
+          return (
+            <button
+              key={opt.value}
+              className={`w-full text-left px-3 py-3 rounded-[var(--radius-md)] border transition-all ${
+                active
+                  ? 'bg-[var(--accent-subtle)] text-[var(--text-primary)] border-[var(--accent)] shadow-[var(--interactive-shadow)]'
+                  : 'bg-[var(--control-bg)] text-[var(--text-secondary)] border-[var(--control-border)] hover:border-[var(--accent)] hover:bg-[var(--control-hover-bg)]'
+              }`}
+              onClick={() => handleUiStyleChange(opt.value)}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-base font-medium">{opt.label}</span>
+                {active && (
+                  <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--accent)]">当前</span>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
       {/* 主题模式 */}
       <div className="text-base text-[var(--text-muted)] uppercase tracking-[0.1em] mb-2">
         主题
@@ -568,54 +612,11 @@ function AboutSettings() {
   );
 }
 
-// ─── ShortcutsSettings（快捷键页）───
-
-const SHORTCUT_GROUPS: { title: string; items: { keys: string; desc: string }[] }[] = [
-  {
-    title: '终端操作',
-    items: [
-      { keys: 'Ctrl + Shift + C', desc: '复制终端选中文本' },
-      { keys: 'Ctrl + Shift + V', desc: '粘贴到终端' },
-    ],
-  },
-];
-
-function ShortcutsSettings() {
-  return (
-    <div className="space-y-6">
-      {SHORTCUT_GROUPS.map((group) => (
-        <div key={group.title}>
-          <div className="text-base text-[var(--text-muted)] uppercase tracking-[0.1em] mb-2">
-            {group.title}
-          </div>
-          <div className="space-y-1">
-            {group.items.map((item) => (
-              <div
-                key={item.keys}
-                className="flex items-center justify-between px-3 py-2.5 rounded-[var(--radius-md)] bg-[var(--bg-base)] border border-[var(--border-subtle)]"
-              >
-                <span className="text-base text-[var(--text-primary)]">{item.desc}</span>
-                <kbd className="px-2 py-0.5 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] border border-[var(--border-default)] text-sm font-mono text-[var(--text-secondary)]">
-                  {item.keys}
-                </kbd>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-      <div className="pt-3 text-sm text-[var(--text-muted)]">
-        终端内快捷键仅在终端获得焦点时生效
-      </div>
-    </div>
-  );
-}
-
 // ─── SettingsModal（主弹窗）───
 
 const MENU_ITEMS: { key: SettingsPage; label: string }[] = [
   { key: 'terminal', label: '终端设置' },
   { key: 'system', label: '系统设置' },
-  { key: 'shortcuts', label: '快捷键' },
   { key: 'about', label: '关于' },
 ];
 
@@ -632,7 +633,7 @@ export function SettingsModal({ open, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
-        className="relative w-[640px] max-h-[80vh] bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-[var(--radius-md)] shadow-[var(--shadow-overlay)] flex flex-col overflow-hidden animate-slide-in"
+        className="relative w-[640px] max-h-[80vh] bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-[var(--radius-md)] shadow-[var(--shadow-overlay)] backdrop-blur-[var(--panel-blur)] flex flex-col overflow-hidden animate-slide-in"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 顶栏 */}
@@ -672,7 +673,6 @@ export function SettingsModal({ open, onClose }: Props) {
           <div className="flex-1 overflow-y-auto px-5 py-4">
             {activePage === 'terminal' && <TerminalSettings />}
             {activePage === 'system' && <SystemSettings />}
-            {activePage === 'shortcuts' && <ShortcutsSettings />}
             {activePage === 'about' && <AboutSettings />}
           </div>
         </div>

@@ -20,11 +20,20 @@ pub fn run() {
             let pty_manager = app.state::<crate::pty::PtyManager>();
             let pty_clone = pty_manager.inner().clone();
             process_monitor::start_monitor(app.handle().clone(), pty_clone);
+            if let Some(window) = app.get_webview_window("main") {
+                let initial_config = config::load_config_from_disk(&app.handle().clone());
+                let _ = config::apply_window_glass_to_window(
+                    &window,
+                    initial_config.window_glass,
+                    initial_config.glass_strength,
+                );
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             config::load_config,
             config::save_config,
+            config::set_window_glass,
             pty::create_pty,
             pty::attach_pty_output,
             pty::write_pty,

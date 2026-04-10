@@ -11,6 +11,7 @@
   },
   "include": [
     "src/utils/themeManager.ts",
-    "src/utils/prompt.ts"
+    "src/utils/prompt.ts",
+    "src/utils/ptyOutputRegistry.ts"
   ]
 }

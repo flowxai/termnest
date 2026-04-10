@@ -3,9 +3,17 @@ const assert = require('node:assert/strict');
 const dataset = {};
 const storage = new Map();
 let mediaQueryListener;
+const styleValues = new Map();
 
 global.document = {
-  documentElement: { dataset },
+  documentElement: {
+    dataset,
+    style: {
+      setProperty(key, value) {
+        styleValues.set(key, value);
+      },
+    },
+  },
 };
 
 global.localStorage = {
@@ -39,10 +47,21 @@ global.window = {
   },
 };
 
-const { applyTheme, getResolvedTheme } = require('../.tmp-tests/themeManager.js');
+const { applyTheme, getResolvedTheme, applyUiStyle, getResolvedUiStyle, applyWindowGlass } = require('../.tmp-tests/utils/themeManager.js');
 
 assert.doesNotThrow(() => applyTheme('auto'));
 assert.equal(getResolvedTheme(), 'dark');
 assert.equal(dataset.theme, 'dark');
 assert.equal(storage.get('termnest-theme'), 'dark');
 assert.equal(typeof mediaQueryListener, 'function');
+
+assert.doesNotThrow(() => applyUiStyle('workbench'));
+assert.equal(getResolvedUiStyle(), 'workbench');
+assert.equal(dataset.uiStyle, 'workbench');
+assert.equal(storage.get('termnest-ui-style'), 'workbench');
+
+assert.doesNotThrow(() => applyWindowGlass(true, 48));
+assert.equal(dataset.windowGlass, 'on');
+assert.equal(storage.get('termnest-window-glass'), '1');
+assert.equal(storage.get('termnest-glass-strength'), '48');
+assert.equal(styleValues.get('--glass-strength'), '48');

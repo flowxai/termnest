@@ -22,11 +22,16 @@ export interface AppConfig {
   layoutSizes?: number[];
   middleColumnSizes?: number[];
   theme: 'auto' | 'light' | 'dark';
+  uiStyle: UiStyle;
+  windowGlass: boolean;
+  glassStrength: number;
   terminalFollowTheme: boolean;
   proxy: ProxyConfig;
   sessionAliases: Record<string, Record<string, string>>;
   sessionPins: Record<string, Record<string, boolean>>;
 }
+
+export type UiStyle = 'classic' | 'pro' | 'workbench' | 'product';
 
 export type NotificationKind = 'info' | 'success' | 'warning' | 'error';
 

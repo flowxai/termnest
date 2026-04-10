@@ -41,7 +41,7 @@ global.document = {
   },
 };
 
-const { showConfirm } = require('../.tmp-tests/prompt.js');
+const { showConfirm } = require('../.tmp-tests/utils/prompt.js');
 
 (async () => {
   const promise = showConfirm('关闭', '确认关闭吗');

@@ -1,12 +1,12 @@
 {
   "name": "termnest",
   "private": true,
-  "version": "1.0.10",
+  "version": "1.1.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test:unit": "rm -rf .tmp-tests && tsc -p tsconfig.test.json && printf '{\"type\":\"commonjs\"}\\n' > .tmp-tests/package.json && node tests/themeManager.compat.test.cjs && node tests/prompt.confirm.test.cjs",
+    "test:unit": "rm -rf .tmp-tests && tsc -p tsconfig.test.json && printf '{\"type\":\"commonjs\"}\\n' > .tmp-tests/package.json && node tests/themeManager.compat.test.cjs && node tests/prompt.confirm.test.cjs && node tests/ptyOutputRegistry.test.cjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },
