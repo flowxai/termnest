@@ -18,7 +18,6 @@ interface TreeNodeProps {
   gitStatusMap: Map<string, GitFileStatus>;
   onViewDiff: (status: GitFileStatus) => void;
   onViewFile: (path: string, name: string) => void;
-  fsVersion: number;
 }
 
 function getRelativePath(targetPath: string, rootPath: string) {
@@ -33,7 +32,7 @@ function getRelativePath(targetPath: string, rootPath: string) {
   return normalizedTarget.slice(normalizedRoot.length + 1).replace(/\//g, sep);
 }
 
-function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewFile, fsVersion }: TreeNodeProps) {
+function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewFile }: TreeNodeProps) {
   const activeProjectId = useAppStore((s) => s.activeProjectId);
   const [expanded, setExpanded] = useState(() =>
     activeProjectId ? isExpanded(activeProjectId, entry.path) : false
@@ -56,12 +55,14 @@ function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewF
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 文件系统变化时，刷新已展开目录的子节点
-  useEffect(() => {
-    if (fsVersion > 0 && expanded && entry.isDir) {
-      loadChildren();
+  // 文件系统变化时，只刷新受影响的目录（防抖 300ms）
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useTauriEvent<FsChangePayload>('fs-change', useCallback((payload: FsChangePayload) => {
+    if (expanded && payload.path.startsWith(entry.path)) {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = setTimeout(loadChildren, 300);
     }
-  }, [fsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [expanded, entry.path, loadChildren]));
 
   const handleToggle = useCallback(async () => {
     if (!entry.isDir) {
@@ -239,7 +240,7 @@ function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewF
             gitStatusMap={gitStatusMap}
             onViewDiff={onViewDiff}
             onViewFile={onViewFile}
-            fsVersion={fsVersion}
+
           />
         ))}
     </div>
@@ -253,7 +254,6 @@ export function FileTree() {
   const [rootEntries, setRootEntries] = useState<FileEntry[]>([]);
   const [gitStatusMap, setGitStatusMap] = useState<Map<string, GitFileStatus>>(new Map());
   const [diffTarget, setDiffTarget] = useState<GitFileStatus | null>(null);
-  const [fsVersion, setFsVersion] = useState(0);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadGitStatus = useCallback(() => {
@@ -296,12 +296,11 @@ export function FileTree() {
 
   useTauriEvent<FsChangePayload>('fs-change', useCallback((payload: FsChangePayload) => {
     if (!project) return;
-    if (payload.projectPath === project.path) {
-      debouncedRefresh();
-      setFsVersion((v) => v + 1);
-    }
     if (payload.path === project.path) {
       loadRootEntries();
+    }
+    if (payload.projectPath === project.path) {
+      debouncedRefresh();
     }
   }, [project?.path, loadRootEntries, debouncedRefresh]));
 
@@ -371,7 +370,7 @@ export function FileTree() {
             gitStatusMap={gitStatusMap}
             onViewDiff={handleViewDiff}
             onViewFile={handleViewFile}
-            fsVersion={fsVersion}
+
           />
         ))}
       </div>
