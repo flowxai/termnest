@@ -63,11 +63,11 @@ AI 编码的日常不需要完整 IDE，需要的是一个**驾驶舱**：
 
 ### 终端优先
 
-多标签 + 递归分屏。xterm.js v6 WebGL 加速渲染，PTY 即时输出，没有人为的缓冲延迟。终端内容在布局切换时不丢失，支持标题重命名和状态聚合。
+多标签 + 递归分屏。xterm.js v6 渲染，PTY 自适应输出（按键即时响应，突发数据智能合并），平滑滚动。终端内容在布局切换时不丢失，支持标题重命名和状态聚合。
 
 ### AI 会话管理
 
-自动发现本机 Claude Code 和 Codex 的历史会话。一键恢复任意对话，不用去翻命令行历史。支持置顶、别名、按活跃时间排序、删除记录。
+自动发现本机 Claude Code 和 Codex 的历史会话。一键恢复任意对话，不用去翻命令行历史。自动处理终端环境兼容性（包括 Codex TUI 的颜色和尺寸适配）。支持置顶、别名、按活跃时间排序、删除记录。
 
 ### 轻量编辑器
 
@@ -76,6 +76,10 @@ AI 编码的日常不需要完整 IDE，需要的是一个**驾驶舱**：
 ### Git 集成
 
 文件树直接标注工作区状态。查看 diff、提交历史、逐提交文件变更，多仓库自动发现。不用切到另一个 Git 客户端。
+
+### UI 风格系统
+
+7 种视觉风格可选：经典、专业工具、终端工作台、现代产品、任务控制、编辑室、多巴胺脉冲。每种风格独立调校了配色、圆角、阴影、终端色板。支持亮/暗主题切换，终端可选跟随或独立主题。
 
 ### 代理配置
 
@@ -87,7 +91,7 @@ AI 编码的日常不需要完整 IDE，需要的是一个**驾驶舱**：
 ┌──────────────────────────────────────────────────────┐
 │  Tauri v2 (Rust)                                     │
 │                                                      │
-│  pty.rs            PTY 生命周期，即时 I/O             │
+│  pty.rs            PTY 生命周期，自适应 I/O           │
 │  ai_sessions.rs    Claude / Codex 会话发现            │
 │  process_monitor   AI 进程状态检测                    │
 │  fs.rs             目录列表 + 文件监听                │
@@ -97,14 +101,14 @@ AI 编码的日常不需要完整 IDE，需要的是一个**驾驶舱**：
 │  React 19 + TypeScript                               │
 │                                                      │
 │  Zustand           全局状态管理                       │
-│  xterm.js v6       WebGL 加速终端渲染                 │
+│  xterm.js v6       终端渲染 + 平滑滚动                │
 │  Allotment         三栏可拖拽布局                     │
 │  SplitNode         递归二叉分屏树                     │
 ├──────────────────────────────────────────────────────┤
 │  数据流                                              │
 │                                                      │
 │  按键 → xterm → write_pty → PTY                     │
-│  PTY → 即时 flush → pty-output → xterm              │
+│  PTY → 自适应 flush → pty-output → xterm            │
 │  进程监控 → pty-status-change → 状态指示             │
 │  文件变化 → fs-change → 文件树刷新                   │
 └──────────────────────────────────────────────────────┘
@@ -133,7 +137,7 @@ npm run tauri build    # 生产构建
 |---|------|
 | 框架 | Tauri v2 + Rust |
 | 前端 | React 19, TypeScript, Zustand, Tailwind CSS v4, Vite |
-| 终端 | xterm.js v6 + WebGL addon, portable-pty |
+| 终端 | xterm.js v6, portable-pty |
 | Git | libgit2 (git2-rs) |
 | 文件监听 | notify + ignore |
 | 布局 | Allotment + 递归 SplitNode 树 |

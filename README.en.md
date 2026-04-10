@@ -63,11 +63,11 @@ Switch between repos instantly. Each project maintains its own tabs, split layou
 
 ### Terminal-first
 
-Tabbed terminals with recursive split panes. xterm.js v6 with WebGL-accelerated rendering and immediate PTY output — no artificial buffering delay. Terminal content survives layout changes. Supports tab renaming and status aggregation.
+Tabbed terminals with recursive split panes. xterm.js v6 rendering with adaptive PTY output (instant keystroke response, smart burst coalescing) and smooth scrolling. Terminal content survives layout changes. Supports tab renaming and status aggregation.
 
 ### AI Session Management
 
-Auto-discovers local Claude Code and Codex session history. Resume any conversation with one click instead of digging through shell history. Pin, rename, sort by last active time, or delete records.
+Auto-discovers local Claude Code and Codex session history. Resume any conversation with one click instead of digging through shell history. Automatically handles terminal environment compatibility (including Codex TUI color and sizing). Pin, rename, sort by last active time, or delete records.
 
 ### Lightweight Editor
 
@@ -76,6 +76,10 @@ Click to open from the file tree. Multi-tab editing, `Cmd/Ctrl+S` to save. Track
 ### Git Integration
 
 File tree annotates working-tree status directly. View diffs, commit history, and per-commit file changes. Multi-repo auto-discovery. No need to switch to a separate Git client.
+
+### UI Style System
+
+7 visual styles to choose from: Classic, Pro, Workbench, Product, Mission Control, Editorial, Dopamine Pulse. Each style has its own tuned color palette, border radius, shadows, and terminal color scheme. Supports light/dark theme switching, with terminal theme following or independent.
 
 ### Proxy Configuration
 
@@ -87,7 +91,7 @@ Global proxy defaults with per-project overrides. Only affects terminals inside 
 ┌──────────────────────────────────────────────────────┐
 │  Tauri v2 (Rust)                                     │
 │                                                      │
-│  pty.rs            PTY lifecycle, immediate I/O      │
+│  pty.rs            PTY lifecycle, adaptive I/O       │
 │  ai_sessions.rs    Claude / Codex session discovery  │
 │  process_monitor   AI process state detection        │
 │  fs.rs             Directory listing + file watcher  │
@@ -97,14 +101,14 @@ Global proxy defaults with per-project overrides. Only affects terminals inside 
 │  React 19 + TypeScript                               │
 │                                                      │
 │  Zustand           Global state management           │
-│  xterm.js v6       WebGL-accelerated terminals       │
+│  xterm.js v6       Terminal rendering + smooth scroll│
 │  Allotment         Resizable three-column layout     │
 │  SplitNode         Recursive binary split tree       │
 ├──────────────────────────────────────────────────────┤
 │  Data Flow                                           │
 │                                                      │
 │  Keypress → xterm → write_pty → PTY                 │
-│  PTY → immediate flush → pty-output → xterm         │
+│  PTY → adaptive flush → pty-output → xterm          │
 │  Process monitor → pty-status-change → status dots  │
 │  File change → fs-change → file tree refresh        │
 └──────────────────────────────────────────────────────┘
@@ -133,7 +137,7 @@ npm run tauri build    # production bundle
 |-------|-----------|
 | Framework | Tauri v2 + Rust |
 | Frontend | React 19, TypeScript, Zustand, Tailwind CSS v4, Vite |
-| Terminal | xterm.js v6 + WebGL addon, portable-pty |
+| Terminal | xterm.js v6, portable-pty |
 | Git | libgit2 (git2-rs) |
 | File watch | notify + ignore |
 | Layout | Allotment + recursive SplitNode tree |
