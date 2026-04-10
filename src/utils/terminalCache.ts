@@ -10,7 +10,7 @@
 
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { WebglAddon } from '@xterm/addon-webgl';
+import { CanvasAddon } from '@xterm/addon-canvas';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -156,13 +156,12 @@ export function getOrCreateTerminal(ptyId: number): CachedTerminal {
   term.loadAddon(fitAddon);
   term.open(wrapper);
 
-  // WebGL 渲染器，比 DOM 渲染器快数倍；失败时自动降级
+  // Canvas 渲染器：比 DOM 渲染器快，比 WebGL 轻量
+  // WebGL 在 Tauri WKWebView 中多上下文会导致间歇性卡顿
   try {
-    const webgl = new WebglAddon();
-    webgl.onContextLoss(() => webgl.dispose());
-    term.loadAddon(webgl);
+    term.loadAddon(new CanvasAddon());
   } catch {
-    // WebGL 不可用，使用默认 DOM 渲染器
+    // Canvas 不可用，使用默认 DOM 渲染器
   }
 
   // Some TUIs (notably Codex) rely heavily on DECSET 2026 synchronized output.
@@ -251,7 +250,18 @@ export async function ensurePtyOutputAttached(ptyId: number): Promise<void> {
       entry.unlisten = unlisten;
       const backlog = await invoke<string>('attach_pty_output', { ptyId });
       if (backlog) {
-        entry.term.write(backlog);
+        // 分块写入，避免大 backlog 一次性阻塞主线程
+        const CHUNK = 64 * 1024;
+        if (backlog.length <= CHUNK) {
+          entry.term.write(backlog);
+        } else {
+          for (let i = 0; i < backlog.length; i += CHUNK) {
+            entry.term.write(backlog.slice(i, i + CHUNK));
+            if (i + CHUNK < backlog.length) {
+              await new Promise((r) => setTimeout(r, 0));
+            }
+          }
+        }
       }
       entry.attached = true;
     } catch (error) {

@@ -82,34 +82,34 @@ function insertSplit(
 
 
 export function TerminalArea({ projectId, projectPath }: Props) {
-  const config = useAppStore((s) => s.config);
-  const projectStates = useAppStore((s) => s.projectStates);
+  const availableShells = useAppStore((s) => s.config.availableShells);
+  const ps = useAppStore((s) => s.projectStates.get(projectId));
   const updateTabLayout = useAppStore((s) => s.updateTabLayout);
   const removeTab = useAppStore((s) => s.removeTab);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const pushNotification = useAppStore((s) => s.pushNotification);
-  const ps = projectStates.get(projectId);
   const activeTab = ps?.tabs.find((t) => t.id === ps.activeTabId);
   const showTerminalTabs = (ps?.tabs.length ?? 0) > 0;
 
   const handleNewTab = useCallback(async (selectedShell?: ShellConfig) => {
     await createTerminalTab(projectId, projectPath, { shellName: selectedShell?.name });
-  }, [projectId, projectPath, config]);
+  }, [projectId, projectPath]);
 
   const handleNewTabClick = useCallback((e: React.MouseEvent) => {
     showContextMenu(
       e.clientX,
       e.clientY,
-      config.availableShells.map((shell) => ({
+      availableShells.map((shell) => ({
         label: shell.name,
         onClick: () => handleNewTab(shell),
       })),
     );
-  }, [config.availableShells, handleNewTab]);
+  }, [availableShells, handleNewTab]);
 
   const handleSplitPane = useCallback(
     async (paneId: string, direction: 'horizontal' | 'vertical') => {
       if (!ps || !activeTab) return;
+      const { config } = useAppStore.getState();
       const shell = config.availableShells.find((s) => s.name === config.defaultShell)
         ?? config.availableShells[0];
       if (!shell) {
@@ -165,7 +165,7 @@ export function TerminalArea({ projectId, projectPath }: Props) {
       updateTabLayout(projectId, activeTab.id, newLayout);
       saveLayoutToConfig(projectId);
     },
-    [ps, activeTab, config, projectId, projectPath, pushNotification, updateTabLayout]
+    [ps, activeTab, projectId, projectPath, pushNotification, updateTabLayout]
   );
 
   // Called when an entire leaf (pane group) is closed.

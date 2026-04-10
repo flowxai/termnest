@@ -550,14 +550,28 @@ pub fn create_pty(
         let mut pending = Vec::new();
 
         loop {
-            // 阻塞等待首个数据块，然后立即 drain 队列中已有数据并 flush。
-            // 比固定 16ms 定时器延迟低得多：单字节输入立即发送，
-            // 连续突发数据自然合并（try_recv 在有更多数据时持续读取）。
+            // 阻塞等待首个数据块到达，然后 drain 队列中已有数据。
+            // 如果数据量小（交互式打字），立即发送，延迟接近零。
+            // 如果数据量大（编译日志、会话恢复），用 2ms 短窗口继续收集，
+            // 但批次不超过 48KB，避免攒太久导致前端卡死。
+            const MAX_BATCH: usize = 48 * 1024;
             match rx.recv() {
                 Ok(data) => {
                     pending.extend(data);
                     while let Ok(more) = rx.try_recv() {
                         pending.extend(more);
+                    }
+                    // 数据量已经不小，用短窗口继续合并，但有大小上限
+                    while pending.len() < MAX_BATCH {
+                        match rx.recv_timeout(Duration::from_millis(2)) {
+                            Ok(more) => {
+                                pending.extend(more);
+                                while let Ok(more) = rx.try_recv() {
+                                    pending.extend(more);
+                                }
+                            }
+                            Err(_) => break,
+                        }
                     }
                 }
                 Err(mpsc::RecvError) => {

@@ -9,6 +9,8 @@ import { showPrompt } from '../utils/prompt';
 import { DiffModal } from './DiffModal';
 import type { FileEntry, FsChangePayload, GitFileStatus, PtyOutputPayload } from '../types';
 
+const GIT_OUTPUT_PATTERNS = [/create mode/, /Switched to/, /Already up to date/, /insertions?\(\+\)/, /deletions?\(-\)/];
+
 interface TreeNodeProps {
   entry: FileEntry;
   projectRoot: string;
@@ -16,6 +18,7 @@ interface TreeNodeProps {
   gitStatusMap: Map<string, GitFileStatus>;
   onViewDiff: (status: GitFileStatus) => void;
   onViewFile: (path: string, name: string) => void;
+  fsVersion: number;
 }
 
 function getRelativePath(targetPath: string, rootPath: string) {
@@ -30,7 +33,7 @@ function getRelativePath(targetPath: string, rootPath: string) {
   return normalizedTarget.slice(normalizedRoot.length + 1).replace(/\//g, sep);
 }
 
-function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewFile }: TreeNodeProps) {
+function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewFile, fsVersion }: TreeNodeProps) {
   const activeProjectId = useAppStore((s) => s.activeProjectId);
   const [expanded, setExpanded] = useState(() =>
     activeProjectId ? isExpanded(activeProjectId, entry.path) : false
@@ -52,6 +55,13 @@ function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewF
       invoke('watch_directory', { path: entry.path, projectPath: projectRoot });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 文件系统变化时，刷新已展开目录的子节点
+  useEffect(() => {
+    if (fsVersion > 0 && expanded && entry.isDir) {
+      loadChildren();
+    }
+  }, [fsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggle = useCallback(async () => {
     if (!entry.isDir) {
@@ -76,12 +86,6 @@ function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewF
       toggleExpandedDir(activeProjectId, entry.path, next);
     }
   }, [entry, expanded, loadChildren, projectRoot, gitStatusMap, onViewDiff, onViewFile, activeProjectId]);
-
-  useTauriEvent<FsChangePayload>('fs-change', useCallback((payload: FsChangePayload) => {
-    if (expanded && payload.path.startsWith(entry.path)) {
-      loadChildren();
-    }
-  }, [expanded, entry.path, loadChildren]));
 
   return (
     <div>
@@ -235,6 +239,7 @@ function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewF
             gitStatusMap={gitStatusMap}
             onViewDiff={onViewDiff}
             onViewFile={onViewFile}
+            fsVersion={fsVersion}
           />
         ))}
     </div>
@@ -243,12 +248,12 @@ function TreeNode({ entry, projectRoot, depth, gitStatusMap, onViewDiff, onViewF
 
 export function FileTree() {
   const activeProjectId = useAppStore((s) => s.activeProjectId);
-  const config = useAppStore((s) => s.config);
-  const project = config.projects.find((p) => p.id === activeProjectId);
+  const project = useAppStore((s) => s.config.projects.find((p) => p.id === s.activeProjectId));
 
   const [rootEntries, setRootEntries] = useState<FileEntry[]>([]);
   const [gitStatusMap, setGitStatusMap] = useState<Map<string, GitFileStatus>>(new Map());
   const [diffTarget, setDiffTarget] = useState<GitFileStatus | null>(null);
+  const [fsVersion, setFsVersion] = useState(0);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadGitStatus = useCallback(() => {
@@ -290,20 +295,19 @@ export function FileTree() {
   }, [project?.path, loadRootEntries]);
 
   useTauriEvent<FsChangePayload>('fs-change', useCallback((payload: FsChangePayload) => {
-    if (project && payload.path === project.path) {
+    if (!project) return;
+    if (payload.projectPath === project.path) {
+      debouncedRefresh();
+      setFsVersion((v) => v + 1);
+    }
+    if (payload.path === project.path) {
       loadRootEntries();
     }
-  }, [project?.path, loadRootEntries]));
+  }, [project?.path, loadRootEntries, debouncedRefresh]));
 
-  useTauriEvent<FsChangePayload>('fs-change', useCallback((payload: FsChangePayload) => {
-    if (project && payload.projectPath === project.path) {
-      debouncedRefresh();
-    }
-  }, [project?.path, debouncedRefresh]));
-
-  const GIT_PATTERNS = [/create mode/, /Switched to/, /Already up to date/, /insertions?\(\+\)/, /deletions?\(-\)/];
   useTauriEvent<PtyOutputPayload>('pty-output', useCallback((payload: PtyOutputPayload) => {
-    if (GIT_PATTERNS.some((p) => p.test(payload.data))) {
+    // 只检查短输出，跳过大批量数据（编译日志等）
+    if (payload.data.length < 4096 && GIT_OUTPUT_PATTERNS.some((p) => p.test(payload.data))) {
       debouncedRefresh();
     }
   }, [debouncedRefresh]));
@@ -367,6 +371,7 @@ export function FileTree() {
             gitStatusMap={gitStatusMap}
             onViewDiff={handleViewDiff}
             onViewFile={handleViewFile}
+            fsVersion={fsVersion}
           />
         ))}
       </div>
